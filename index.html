@@ -1,0 +1,1975 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="author" content="Chirag Patnaik">
+<meta name="version" content="0.1.0">
+<meta name="description" content="Browse Indian Parliamentary Committee reports with private, on-device AI. No server, no API key required, no data leaving your device.">
+<title>SansadLocal — Parliamentary Committee Reports</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23f5efe2'/%3E%3Cpath d='M6 24h20M8 24V14M12 24V14M16 24V14M20 24V14M24 24V14M5 14h22L16 6z' stroke='%23cc5500' stroke-width='1.6' fill='none' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+/* Rangrez · india-01 · LUTYENS — sandstone facade, kesari saffron, ink shadows */
+:root {
+  --bg:         #f5efe2;       /* BODY — sandstone */
+  --surface:    #ffffff;       /* PANEL */
+  --surface2:   #faf3df;       /* row alt */
+  --surface3:   #f0e6ce;
+  --border:     #d4c89a;
+  --border-2:   #c4b277;
+  --text:       #2a1f10;       /* INK */
+  --muted:      #7a6440;
+  --accent:     #cc5500;       /* ACT — kesari */
+  --accent-hi:  #e07028;
+  --accent-bg:  #fdf3e8;
+  --navy:       #15294a;       /* state — official deep blue */
+  --green:      #138838;       /* OK badges */
+  --green-bg:   #e0f0e0;
+  --red:        #b32418;
+  --red-bg:     #fbe5e2;
+  --amber:      #b87000;
+  --amber-bg:   #fcefcc;
+  --info-bg:    #e6ecf5;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body { height: 100%; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  padding: 6px 14px;
+  border-radius: 6px;
+  transition: background 0.12s, border-color 0.12s, transform 0.08s;
+}
+button:hover:not(:disabled) { background: var(--surface3); border-color: var(--border-2); }
+button:active:not(:disabled) { transform: translateY(1px); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+button.primary:hover:not(:disabled) { background: var(--accent-hi); border-color: var(--accent-hi); }
+button.ghost { background: transparent; border-color: transparent; }
+button.ghost:hover:not(:disabled) { background: var(--surface3); }
+button.sm { padding: 4px 10px; font-size: 0.82rem; }
+
+input, select, textarea {
+  font-family: inherit;
+  font-size: inherit;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  outline: none;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
+/* ── Header ───────────────────────────────────────── */
+header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+}
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  cursor: default;
+}
+.brand-name {
+  font-weight: 800;
+  font-size: 1.1rem;
+  letter-spacing: -0.02em;
+  color: var(--accent);
+}
+.brand-tag {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.spacer { flex: 1; }
+
+.header-stats {
+  display: flex;
+  gap: 16px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.header-stats b { color: var(--text); font-weight: 600; }
+
+.icon-btn {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.92rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.icon-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--surface);
+}
+
+/* ── Main layout ─────────────────────────────────── */
+main {
+  flex: 1;
+  padding: 16px 18px 80px;
+  max-width: 1280px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* ── Filter row ─────────────────────────────────── */
+.filters {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr 1fr auto;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.filters input, .filters select {
+  width: 100%;
+}
+@media (max-width: 900px) {
+  .filters {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.results-line {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.results-line b { color: var(--text); }
+
+/* ── Reports list ──────────────────────────────── */
+.reports {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.report-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto auto;
+  gap: 12px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border);
+  align-items: center;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.report-row:nth-child(even) { background: var(--surface2); }
+.report-row:hover { background: var(--surface3); }
+.report-row:last-child { border-bottom: none; }
+.report-title {
+  font-weight: 500;
+  color: var(--text);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+.report-meta {
+  font-size: 0.78rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.cat-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border: 1px solid;
+  white-space: nowrap;
+}
+.cat-DFG    { background: var(--green-bg);  color: var(--green); border-color: var(--green); }
+.cat-AT     { background: var(--info-bg);   color: var(--navy);  border-color: var(--navy); }
+.cat-BILL   { background: var(--amber-bg);  color: var(--amber); border-color: var(--amber); }
+.cat-ASSURE { background: var(--surface3);  color: var(--text);  border-color: var(--border-2); }
+.cat-SUBJ   { background: var(--accent-bg); color: var(--accent);border-color: var(--accent); }
+
+.text-status {
+  font-size: 0.7rem;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: var(--surface3);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.text-status.ok { background: var(--green-bg); color: var(--green); }
+.text-status.summary { background: var(--accent-bg); color: var(--accent); }
+
+.house-pill {
+  font-size: 0.7rem;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+.house-L { background: var(--accent-bg); color: var(--accent); }
+.house-R { background: var(--info-bg);   color: var(--navy); }
+
+.empty-state {
+  text-align: center;
+  padding: 50px 20px;
+  color: var(--muted);
+}
+.empty-state h3 { margin-bottom: 6px; color: var(--text); }
+
+/* ── Modal / dialog ─────────────────────────────── */
+.modal-bg {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 12, 0, 0.45);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 20px;
+}
+.modal-bg.open { display: flex; }
+.modal {
+  background: var(--surface);
+  border-radius: 10px;
+  max-width: 920px;
+  width: 100%;
+  max-height: calc(100vh - 40px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 12px 48px rgba(0,0,0,0.18);
+}
+.modal-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.modal-title {
+  flex: 1;
+  font-size: 0.95rem;
+  font-weight: 600;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.modal-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.modal-tabs::-webkit-scrollbar { display: none; }
+.tab-btn {
+  background: none;
+  border: none;
+  padding: 9px 14px;
+  font-size: 0.85rem;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  white-space: nowrap;
+}
+.tab-btn:hover:not(:disabled) { color: var(--text); background: none; }
+.tab-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.modal-body {
+  padding: 16px 18px;
+  overflow-y: auto;
+  flex: 1;
+}
+.tab-pane { display: none; }
+.tab-pane.active { display: block; }
+
+/* ── Report dialog ─────────────────────────────── */
+#detailsTab .meta-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 14px;
+  font-size: 0.86rem;
+}
+#detailsTab .meta-grid dt { color: var(--muted); }
+#detailsTab .meta-grid dd { color: var(--text); word-break: break-word; }
+
+#textTab pre {
+  white-space: pre-wrap;
+  font-family: inherit;
+  font-size: 0.84rem;
+  line-height: 1.55;
+  background: var(--surface2);
+  padding: 12px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.summary-box {
+  font-size: 0.9rem;
+  line-height: 1.6;
+  background: var(--surface2);
+  padding: 14px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  white-space: pre-wrap;
+  min-height: 100px;
+}
+.summary-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.summary-actions .label { font-size: 0.82rem; color: var(--muted); }
+
+/* ── Chat panel ────────────────────────────────── */
+.chat-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+  max-height: 50vh;
+  overflow-y: auto;
+  padding: 4px;
+}
+.chat-msg {
+  padding: 8px 12px;
+  border-radius: 8px;
+  max-width: 88%;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+.chat-msg.user {
+  align-self: flex-end;
+  background: var(--accent);
+  color: #fff;
+}
+.chat-msg.assistant {
+  align-self: flex-start;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+}
+.chat-msg.system {
+  align-self: center;
+  background: var(--info-bg);
+  color: var(--navy);
+  font-size: 0.78rem;
+  font-style: italic;
+}
+.chat-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+.chat-input-row textarea {
+  flex: 1;
+  resize: vertical;
+  min-height: 38px;
+  max-height: 120px;
+}
+
+/* ── Settings modal ─────────────────────────────── */
+.settings-section {
+  margin-bottom: 22px;
+}
+.settings-section h3 {
+  font-size: 0.88rem;
+  margin-bottom: 8px;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+.settings-section p {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.settings-row {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.settings-row label { font-size: 0.84rem; color: var(--muted); }
+.settings-row .with-btn {
+  display: flex; gap: 8px;
+}
+.settings-row .with-btn input { flex: 1; }
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  font-size: 0.78rem;
+  border-radius: 12px;
+  background: var(--surface3);
+  color: var(--muted);
+}
+.status-pill.ready { background: var(--green-bg); color: var(--green); }
+.status-pill.loading { background: var(--amber-bg); color: var(--amber); }
+.status-pill.error { background: var(--red-bg); color: var(--red); }
+.status-pill .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: currentColor;
+}
+
+.progress-bar {
+  height: 6px;
+  background: var(--surface3);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 6px;
+  display: none;
+}
+.progress-bar.visible { display: block; }
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  width: 0;
+  transition: width 0.15s;
+}
+.progress-text {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 4px;
+  min-height: 1.2em;
+}
+
+/* ── Help modal ─────────────────────────────────── */
+#helpModal .modal-body { font-size: 0.88rem; line-height: 1.65; }
+#helpModal h3 { margin: 14px 0 6px; font-size: 1rem; color: var(--accent); }
+#helpModal h3:first-child { margin-top: 0; }
+#helpModal ul { margin: 6px 0 12px 22px; }
+#helpModal li { margin-bottom: 4px; }
+#helpModal code {
+  background: var(--surface2);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 0.84rem;
+  border: 1px solid var(--border);
+}
+
+/* ── Loading splash ─────────────────────────────── */
+#splash {
+  position: fixed; inset: 0;
+  background: var(--bg);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  z-index: 200;
+  gap: 12px;
+}
+#splash.hide { display: none; }
+.splash-logo { font-size: 2.5rem; color: var(--accent); font-weight: 800; letter-spacing: -0.04em; }
+.splash-tag { font-size: 0.86rem; color: var(--muted); text-align: center; max-width: 360px; }
+.splash-spinner {
+  width: 24px; height: 24px;
+  border: 3px solid var(--surface3);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  margin-top: 8px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.splash-error {
+  background: var(--red-bg);
+  border: 1px solid var(--red);
+  color: var(--red);
+  padding: 12px 18px;
+  border-radius: 8px;
+  font-size: 0.86rem;
+  max-width: 460px;
+  display: none;
+}
+.splash-error.show { display: block; }
+
+/* ── Footer ─────────────────────────────────────── */
+.footer-nav {
+  position: fixed;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 24px;
+  background: rgba(255,255,255,0.92);
+  padding: 6px 18px;
+  border-radius: 20px;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+  font-size: 0.72rem;
+  z-index: 5;
+}
+.footer-nav a { color: var(--accent); text-decoration: none; }
+.footer-nav a:hover { text-decoration: underline; }
+
+/* ── Toast ──────────────────────────────────────── */
+.toast {
+  position: fixed;
+  bottom: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--text);
+  color: var(--bg);
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  z-index: 300;
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
+}
+.toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div id="splash">
+  <div class="splash-logo">SansadLocal</div>
+  <div class="splash-tag">Loading committee report data — first time may take a moment.</div>
+  <div class="splash-spinner"></div>
+  <div class="splash-error" id="splashError"></div>
+</div>
+
+<header>
+  <div class="brand">
+    <span class="brand-name">SansadLocal</span>
+    <span class="brand-tag">Indian Parliamentary Committee Reports</span>
+  </div>
+  <div class="spacer"></div>
+  <div class="header-stats" id="headerStats"></div>
+  <button class="icon-btn" id="settingsBtn" title="Settings (AI model, BYOK)" aria-label="Settings">&#9881;</button>
+  <button class="icon-btn" id="helpBtn" title="Help" aria-label="Help">?</button>
+</header>
+
+<main>
+  <div class="filters">
+    <input type="search" id="filterSearch" placeholder="Search title or full text..." autocomplete="off">
+    <select id="filterCommittee"><option value="">All committees</option></select>
+    <select id="filterLS"><option value="">All Lok Sabhas</option></select>
+    <select id="filterCategory">
+      <option value="">All categories</option>
+      <option value="DFG">Demand for Grants</option>
+      <option value="AT">Action Taken</option>
+      <option value="BILL">Bills</option>
+      <option value="ASSURE">Assurances</option>
+      <option value="SUBJ">Subjects</option>
+    </select>
+    <select id="filterSort">
+      <option value="date_desc">Newest first</option>
+      <option value="date_asc">Oldest first</option>
+      <option value="number_desc">Report no. (high→low)</option>
+      <option value="number_asc">Report no. (low→high)</option>
+      <option value="committee">Committee A→Z</option>
+    </select>
+    <button class="ghost sm" id="resetFiltersBtn" title="Reset filters">&times;</button>
+  </div>
+  <div class="results-line" id="resultsLine"></div>
+  <div class="reports" id="reportsList"></div>
+</main>
+
+<!-- ── Report dialog ───────────────────────────── -->
+<div class="modal-bg" id="reportModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="reportTitle"></div>
+      <button class="icon-btn" id="reportCloseBtn" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-tabs">
+      <button class="tab-btn active" data-tab="details">Details</button>
+      <button class="tab-btn" data-tab="text">Full text</button>
+      <button class="tab-btn" data-tab="summary">AI summary</button>
+      <button class="tab-btn" data-tab="chat">Ask</button>
+    </div>
+    <div class="modal-body">
+      <div class="tab-pane active" id="detailsTab"></div>
+      <div class="tab-pane" id="textTab"></div>
+      <div class="tab-pane" id="summaryTab">
+        <div class="summary-actions">
+          <span class="label">Generate a plain-English summary using your configured AI:</span>
+          <button class="primary" id="generateSummaryBtn">Generate</button>
+          <button class="ghost sm" id="copySummaryBtn" style="display:none">Copy</button>
+        </div>
+        <div class="summary-box" id="summaryBox">No summary yet.</div>
+      </div>
+      <div class="tab-pane" id="chatTab">
+        <div class="chat-thread" id="chatThread">
+          <div class="chat-msg system">Ask anything about this report. Your question + the report text are sent to the AI you configured (local Gemma or BYOK).</div>
+        </div>
+        <div class="chat-input-row">
+          <textarea id="chatInput" rows="2" placeholder="Ask a question about this report..."></textarea>
+          <button class="primary" id="chatSendBtn">Send</button>
+          <button class="ghost sm" id="chatStopBtn" style="display:none">Stop</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Settings modal ──────────────────────────── -->
+<div class="modal-bg" id="settingsModal">
+  <div class="modal" style="max-width:640px">
+    <div class="modal-header">
+      <div class="modal-title">Settings</div>
+      <button class="icon-btn" id="settingsCloseBtn" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="settings-section">
+        <h3>AI mode</h3>
+        <p>Choose how summaries and Q&amp;A are generated. Local runs Gemma in your browser via WebGPU — first load downloads ~1.5 GB of weights, cached after.</p>
+        <div class="settings-row">
+          <label>Mode</label>
+          <select id="aiMode">
+            <option value="local">Local AI (WebGPU, Gemma)</option>
+            <option value="api">BYOK (your API key)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="settings-section" id="localAISection">
+        <h3>Local AI</h3>
+        <div class="settings-row">
+          <label>Model</label>
+          <select id="localModel">
+            <option value="gemma4-e2b">Gemma 4 E2B (~1.5 GB)</option>
+            <option value="gemma4-e4b">Gemma 4 E4B (~4.9 GB)</option>
+          </select>
+        </div>
+        <div class="settings-row">
+          <label>Status</label>
+          <div>
+            <span class="status-pill" id="localStatus"><span class="dot"></span><span id="localStatusText">Not loaded</span></span>
+            <button class="sm" id="loadModelBtn" style="margin-left:8px">Load</button>
+            <button class="ghost sm" id="clearCacheBtn" style="margin-left:4px">Clear cache</button>
+            <div class="progress-bar" id="loadProgress"><div class="progress-fill" id="loadProgressFill"></div></div>
+            <div class="progress-text" id="loadProgressText"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-section" id="apiAISection" style="display:none">
+        <h3>BYOK provider</h3>
+        <p>Your API key stays in this browser only — sent directly to the provider, never to us. Free options: Gemini, Groq, OpenRouter, Ollama (local).</p>
+        <div class="settings-row">
+          <label>Provider</label>
+          <select id="apiProvider">
+            <option value="anthropic">Anthropic (Claude)</option>
+            <option value="openai">OpenAI (GPT)</option>
+            <option value="gemini">Google Gemini (free tier)</option>
+            <option value="groq">Groq (free tier, fast)</option>
+            <option value="openrouter">OpenRouter</option>
+            <option value="ollama">Ollama (local, no key)</option>
+            <option value="custom">Custom OpenAI-compatible</option>
+          </select>
+        </div>
+        <div class="settings-row">
+          <label>API key</label>
+          <input type="password" id="apiKey" placeholder="sk-...">
+        </div>
+        <div class="settings-row">
+          <label>Model</label>
+          <input type="text" id="apiModel" placeholder="defaults per provider">
+        </div>
+        <div class="settings-row" id="baseUrlRow" style="display:none">
+          <label>Base URL</label>
+          <input type="text" id="apiBaseUrl" placeholder="https://...">
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>Data</h3>
+        <p id="dataInfo">—</p>
+        <button class="sm" id="refreshDataBtn">Refresh from mirror</button>
+      </div>
+
+      <div style="text-align:right; margin-top:16px">
+        <button class="primary" id="saveSettingsBtn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Help modal ──────────────────────────────── -->
+<div class="modal-bg" id="helpModal">
+  <div class="modal" style="max-width:680px">
+    <div class="modal-header">
+      <div class="modal-title">SansadLocal — Help</div>
+      <button class="icon-btn" id="helpCloseBtn" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-tabs">
+      <button class="tab-btn active" data-htab="about">About</button>
+      <button class="tab-btn" data-htab="browse">Browse</button>
+      <button class="tab-btn" data-htab="ai">AI</button>
+      <button class="tab-btn" data-htab="privacy">Privacy</button>
+    </div>
+    <div class="modal-body">
+      <div class="tab-pane active" id="hAbout">
+        <h3>What is SansadLocal?</h3>
+        <p>A single-file browser app to browse, search, and summarise reports from India's 24 Departmentally Related Standing Committees (DRSCs) — 16 chaired by Lok Sabha, 8 by Rajya Sabha. The reports are scraped daily from <a href="https://sansad.in" target="_blank" rel="noopener">sansad.in</a> and mirrored as static JSON/text on GitHub Pages so this page can read them with no server, no auth, no API key.</p>
+        <h3>Credit</h3>
+        <p>Built on top of the brilliant <a href="https://github.com/pranaykotas/parliamentwatch" target="_blank" rel="noopener">ParliamentWatch</a> by Pranay Kotasthane. SansadLocal repackages it as a single HTML file with on-device AI.</p>
+        <h3>Why committee reports matter</h3>
+        <p>DRSCs are the most robust institutional mechanism through which Indian Parliament scrutinises the executive. Their reports — on demands for grants, bills, and policy subjects — are evidence-based and non-partisan. They're also poorly indexed and rarely read.</p>
+      </div>
+      <div class="tab-pane" id="hBrowse">
+        <h3>Filtering</h3>
+        <ul>
+          <li><b>Search</b> — substring match against title + extracted full text (when available)</li>
+          <li><b>Committee</b> — narrow to one of 24 DRSCs</li>
+          <li><b>Lok Sabha</b> — current is LS18; older terms appear as the mirror back-fills them</li>
+          <li><b>Category</b> — auto-tagged from the title: <span class="cat-badge cat-DFG">DFG</span> Demand for Grants, <span class="cat-badge cat-AT">AT</span> Action Taken, <span class="cat-badge cat-BILL">BILL</span> Bills, <span class="cat-badge cat-ASSURE">ASSURE</span> Assurances, <span class="cat-badge cat-SUBJ">SUBJ</span> Subjects</li>
+        </ul>
+        <h3>Status badges</h3>
+        <ul>
+          <li><span class="text-status ok">text</span> — full text has been extracted from the PDF and is searchable</li>
+          <li><span class="text-status summary">summary</span> — you've generated an AI summary and it's cached</li>
+          <li><span class="house-pill house-L">LS</span> Lok Sabha-chaired · <span class="house-pill house-R">RS</span> Rajya Sabha-chaired</li>
+        </ul>
+      </div>
+      <div class="tab-pane" id="hAI">
+        <h3>Local AI (default)</h3>
+        <p>Runs Gemma 4 (E2B or E4B) entirely in your browser via WebGPU. The first load downloads weights from Hugging Face (~1.5 GB for E2B, ~4.9 GB for E4B); subsequent loads are instant from your browser cache. Requires a recent Chrome/Edge or Firefox 130+ with a compatible GPU. No data leaves your device.</p>
+        <h3>BYOK (Bring Your Own Key)</h3>
+        <p>If WebGPU isn't available or you want a stronger model, configure a provider in Settings. Free options:</p>
+        <ul>
+          <li><b>Gemini</b> — 15 req/min free at <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com</a></li>
+          <li><b>Groq</b> — fast free tier at <a href="https://console.groq.com/keys" target="_blank">console.groq.com</a></li>
+          <li><b>OpenRouter</b> — free models at <a href="https://openrouter.ai/keys" target="_blank">openrouter.ai</a></li>
+          <li><b>Ollama</b> — runs locally on your computer; no cloud. <code>ollama pull llama3.2</code> then enable <a href="https://github.com/ollama/ollama/blob/main/docs/faq.md#how-can-i-allow-additional-web-origins-to-access-ollama" target="_blank">CORS for browsers</a>.</li>
+        </ul>
+        <p>Paid: <b>Anthropic</b> (best summaries) at <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a>, <b>OpenAI</b> at <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com</a>.</p>
+      </div>
+      <div class="tab-pane" id="hPrivacy">
+        <h3>What stays in your browser</h3>
+        <ul>
+          <li>API keys (in <code>localStorage</code>, never sent anywhere except your chosen provider)</li>
+          <li>Generated summaries (cached in <code>IndexedDB</code>)</li>
+          <li>Model weights (in browser Cache Storage when you load Gemma)</li>
+        </ul>
+        <h3>What leaves your browser</h3>
+        <ul>
+          <li>Fetches to <code>naklitechie.github.io/parliamentwatch-data/</code> — static JSON + text files. No tracking.</li>
+          <li>Fetches to <code>huggingface.co</code> — model weights, only on first Gemma load.</li>
+          <li>If you use BYOK: requests directly to your provider. Your key isn't proxied through any other server.</li>
+        </ul>
+        <h3>What never happens</h3>
+        <ul>
+          <li>No analytics. No accounts. No telemetry. No server logs (no server).</li>
+          <li>The page is served as a static <code>index.html</code> from GitHub Pages.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="footer-nav">
+  <a href="https://naklitechie.github.io/" target="_blank" rel="noopener">&#11013; More projects</a>
+  <a href="https://github.com/NakliTechie/SansadLocal" target="_blank" rel="noopener">&#9000; Source</a>
+  <a href="https://github.com/pranaykotas/parliamentwatch" target="_blank" rel="noopener">Upstream</a>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+
+// ── Constants ─────────────────────────────────────
+const VERSION = '0.1.0';
+const DATA_BASE_URL = (() => {
+  const u = new URL(window.location.href);
+  return u.searchParams.get('data') || 'https://naklitechie.github.io/parliamentwatch-data/';
+})();
+
+// 24 DRSCs — committee key → display name. Mirrors the upstream config but
+// duplicated client-side so the page works even if committees.json is missing.
+const COMMITTEES = {
+  agriculture:       { name: 'Agriculture, Animal Husbandry & Food Processing', house: 'L' },
+  chemicals:         { name: 'Chemicals & Fertilizers',                          house: 'L' },
+  coal:              { name: 'Coal, Mines and Steel',                            house: 'L' },
+  defence:           { name: 'Defence',                                          house: 'L' },
+  energy:            { name: 'Energy',                                           house: 'L' },
+  external_affairs:  { name: 'External Affairs',                                 house: 'L' },
+  finance:           { name: 'Finance',                                          house: 'L' },
+  consumer_affairs:  { name: 'Consumer Affairs, Food & Public Distribution',     house: 'L' },
+  communications:    { name: 'Communications & Information Technology',         house: 'L' },
+  labour:            { name: 'Labour, Textiles & Skill Development',             house: 'L' },
+  petroleum:         { name: 'Petroleum & Natural Gas',                          house: 'L' },
+  railways:          { name: 'Railways',                                         house: 'L' },
+  rural_development: { name: 'Rural Development & Panchayati Raj',               house: 'L' },
+  social_justice:    { name: 'Social Justice & Empowerment',                     house: 'L' },
+  housing:           { name: 'Housing & Urban Affairs',                          house: 'L' },
+  water_resources:   { name: 'Water Resources',                                  house: 'L' },
+  commerce:          { name: 'Commerce',                                         house: 'R' },
+  health:            { name: 'Health & Family Welfare',                          house: 'R' },
+  home_affairs:      { name: 'Home Affairs',                                     house: 'R' },
+  education:         { name: 'Education, Women, Children, Youth & Sports',       house: 'R' },
+  industry:          { name: 'Industry',                                         house: 'R' },
+  personnel:         { name: 'Personnel, Public Grievances, Law & Justice',      house: 'R' },
+  science:           { name: 'Science, Technology, Environment & Forests',       house: 'R' },
+  transport:         { name: 'Transport, Tourism & Culture',                     house: 'R' },
+};
+
+// Title-pattern → category. First match wins. Order matters because
+// "Action Taken" reports often quote a parent DFG report in their title.
+const CATEGORY_PATTERNS = [
+  { code: 'AT',     re: /\baction\s+taken\b/i,                           label: 'Action Taken' },
+  { code: 'DFG',    re: /\bdemand[s]?\s+for\s+grants?\b|^\s*demand\b/i,  label: 'Demand for Grants' },
+  { code: 'BILL',   re: /\bbill\b|amendment.*bill/i,                     label: 'Bills' },
+  { code: 'ASSURE', re: /\bassurance/i,                                  label: 'Assurances' },
+];
+
+const MODELS = {
+  'gemma4-e2b': {
+    id: 'onnx-community/gemma-4-E2B-it-ONNX',
+    label: 'Gemma 4 E2B',
+    dtype: 'q4f16',
+    type: 'multimodal',
+    contextSize: 8192,
+    genConfig: { temperature: 0.5, top_k: 40, top_p: 0.95, max_new_tokens: 1024, repetition_penalty: 1.1 },
+  },
+  'gemma4-e4b': {
+    id: 'onnx-community/gemma-4-E4B-it-ONNX',
+    label: 'Gemma 4 E4B',
+    dtype: 'q4f16',
+    type: 'multimodal',
+    contextSize: 12288,
+    genConfig: { temperature: 0.5, top_k: 40, top_p: 0.95, max_new_tokens: 1024, repetition_penalty: 1.1 },
+  },
+};
+
+// BYOK provider defaults
+const PROVIDER_DEFAULTS = {
+  anthropic:  { url: 'https://api.anthropic.com/v1/messages',                model: 'claude-sonnet-4-5',     style: 'anthropic' },
+  openai:     { url: 'https://api.openai.com/v1/chat/completions',           model: 'gpt-4o-mini',           style: 'openai'    },
+  gemini:     { url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', model: 'gemini-2.5-flash', style: 'openai' },
+  groq:       { url: 'https://api.groq.com/openai/v1/chat/completions',      model: 'llama-3.3-70b-versatile', style: 'openai' },
+  openrouter: { url: 'https://openrouter.ai/api/v1/chat/completions',        model: 'meta-llama/llama-3.3-70b-instruct:free', style: 'openai' },
+  ollama:     { url: 'http://localhost:11434/v1/chat/completions',           model: 'llama3.2',              style: 'openai',   noAuth: true },
+  custom:     { url: '',                                                     model: '',                      style: 'openai'    },
+};
+
+const SUMMARY_PROMPT = `You are summarising a report from an Indian Parliamentary Standing Committee. Read the report excerpt below and produce a clear, plain-English briefing for a busy reader. Use this structure:
+
+1. **What the report is about** (1 sentence)
+2. **Key findings** (3-5 bullets)
+3. **Recommendations** (3-5 bullets, if present)
+4. **Why it matters** (1-2 sentences)
+
+Keep it neutral, factual, and accessible to a non-specialist. Do not invent details that aren't in the text.
+
+REPORT:
+{TEXT}`;
+
+const QA_PROMPT_PREFIX = `You are answering questions about a specific report from an Indian Parliamentary Standing Committee. Use only the report content below to answer. If the answer isn't in the report, say so clearly.
+
+REPORT:
+{TEXT}
+
+---
+
+QUESTION: `;
+
+// ── State ─────────────────────────────────────────
+const state = {
+  data: { reports: {}, manifest: {}, committees: COMMITTEES, meta: null },
+  filtered: [],
+  selectedReport: null,
+  filters: { search: '', committee: '', ls: '', category: '', sort: 'date_desc' },
+
+  ai: {
+    mode: 'local',                       // 'local' | 'api'
+    localModel: 'gemma4-e2b',
+    worker: null,
+    workerReady: false,
+    workerLoading: false,
+    apiProvider: 'anthropic',
+    apiKey: '',
+    apiModel: '',
+    apiBaseUrl: '',
+    streaming: false,
+    abortController: null,               // for fetch-based API streaming
+    msgIdCounter: 0,
+    pendingResolvers: new Map(),         // msgId -> { onToken, onDone, onErr }
+  },
+
+  cache: {
+    summaries: {},                       // reportKey -> string
+    text: {},                            // reportKey -> string (in-memory only, IDB-backed)
+  },
+};
+
+// ── Storage (localStorage for settings, IDB for cache) ─
+const SETTINGS_KEY = 'sansadlocal.settings.v1';
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) return;
+    const s = JSON.parse(raw);
+    if (s.aiMode) state.ai.mode = s.aiMode;
+    if (s.localModel) state.ai.localModel = s.localModel;
+    if (s.apiProvider) state.ai.apiProvider = s.apiProvider;
+    if (s.apiKey) state.ai.apiKey = s.apiKey;
+    if (s.apiModel) state.ai.apiModel = s.apiModel;
+    if (s.apiBaseUrl) state.ai.apiBaseUrl = s.apiBaseUrl;
+  } catch (e) { console.warn('Bad settings', e); }
+}
+function saveSettings() {
+  const s = {
+    aiMode:      state.ai.mode,
+    localModel:  state.ai.localModel,
+    apiProvider: state.ai.apiProvider,
+    apiKey:      state.ai.apiKey,
+    apiModel:    state.ai.apiModel,
+    apiBaseUrl:  state.ai.apiBaseUrl,
+  };
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+}
+
+const IDB_NAME = 'sansadlocal';
+const IDB_VERSION = 1;
+function openIDB() {
+  return new Promise((resolve, reject) => {
+    const r = indexedDB.open(IDB_NAME, IDB_VERSION);
+    r.onupgradeneeded = () => {
+      const db = r.result;
+      if (!db.objectStoreNames.contains('summaries')) db.createObjectStore('summaries');
+      if (!db.objectStoreNames.contains('texts'))     db.createObjectStore('texts');
+      if (!db.objectStoreNames.contains('blobs'))     db.createObjectStore('blobs');  // reports.json + manifest.json
+    };
+    r.onsuccess = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+  });
+}
+function idbGet(store, key) {
+  return openIDB().then(db => new Promise((resolve, reject) => {
+    const req = db.transaction(store, 'readonly').objectStore(store).get(key);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  }));
+}
+function idbPut(store, key, value) {
+  return openIDB().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction(store, 'readwrite');
+    tx.objectStore(store).put(value, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  }));
+}
+
+// ── Helpers ───────────────────────────────────────
+function reportKey(r) {
+  return `${r.committee}|${r.lok_sabha || ''}|${r.report_number}`;
+}
+function safeReportNum(num) {
+  return String(num ?? '').replace(/\//g, '-').replace(/\s+/g, '_');
+}
+function categoriseReport(r) {
+  const t = (r.title || '').trim();
+  if (!t) return null;
+  for (const p of CATEGORY_PATTERNS) {
+    if (p.re.test(t)) return p.code;
+  }
+  return 'SUBJ';
+}
+function reportDate(r) {
+  // Sansad dates are like "18-Mar-2026" or "DD/MM/YYYY". Best-effort to a JS
+  // Date for sorting; falls back to lok_sabha + report_number.
+  const candidates = [r.date_of_presentation, r.presented_in_ls, r.laid_in_rs, r.date_of_adoption];
+  for (const s of candidates) {
+    if (!s) continue;
+    const d = new Date(s.replace(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/, '$3-$2-$1'));
+    if (!isNaN(d)) return d;
+    // Try DD-Mon-YYYY
+    const m = String(s).match(/(\d{1,2})[\-\s]([A-Za-z]+)[\-\s](\d{4})/);
+    if (m) {
+      const d2 = new Date(`${m[2]} ${m[1]}, ${m[3]}`);
+      if (!isNaN(d2)) return d2;
+    }
+  }
+  return null;
+}
+function formatDate(d) {
+  if (!d) return '—';
+  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+function showToast(msg, ms = 2400) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => t.classList.remove('show'), ms);
+}
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, m => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[m]));
+}
+
+// ── Data fetching ─────────────────────────────────
+async function fetchData(forceRefresh = false) {
+  const splash = document.getElementById('splash');
+  const splashErr = document.getElementById('splashError');
+
+  // Try cache first (unless forcing refresh)
+  if (!forceRefresh) {
+    try {
+      const [reportsBlob, manifestBlob, metaBlob] = await Promise.all([
+        idbGet('blobs', 'reports.json'),
+        idbGet('blobs', 'manifest.json'),
+        idbGet('blobs', 'meta.json'),
+      ]);
+      if (reportsBlob && manifestBlob) {
+        state.data.reports  = reportsBlob;
+        state.data.manifest = manifestBlob;
+        state.data.meta     = metaBlob || null;
+      }
+    } catch (e) { console.warn('IDB cache miss', e); }
+  }
+
+  // Fetch from network — best-effort. If we have cached data, surface fetch
+  // errors as a toast instead of blocking startup.
+  const haveCache = Object.keys(state.data.reports).length > 0;
+  try {
+    const [reports, manifest, meta] = await Promise.all([
+      fetch(DATA_BASE_URL + 'reports.json').then(r => r.ok ? r.json() : Promise.reject(`reports.json: ${r.status}`)),
+      fetch(DATA_BASE_URL + 'manifest.json').then(r => r.ok ? r.json() : { texts: {} }).catch(() => ({ texts: {} })),
+      fetch(DATA_BASE_URL + 'meta.json').then(r => r.ok ? r.json() : null).catch(() => null),
+    ]);
+    state.data.reports  = reports;
+    state.data.manifest = manifest;
+    state.data.meta     = meta;
+
+    // Cache
+    idbPut('blobs', 'reports.json',  reports).catch(() => {});
+    idbPut('blobs', 'manifest.json', manifest).catch(() => {});
+    if (meta) idbPut('blobs', 'meta.json', meta).catch(() => {});
+  } catch (err) {
+    console.error('Fetch failed', err);
+    if (!haveCache) {
+      splashErr.textContent = `Could not fetch data: ${err}. Check your connection — or pass ?data=URL to use a different mirror.`;
+      splashErr.classList.add('show');
+      return false;
+    }
+    showToast('Offline — using cached data');
+  }
+
+  splash.classList.add('hide');
+  return true;
+}
+
+async function fetchReportText(report) {
+  const key = reportKey(report);
+  if (state.cache.text[key]) return state.cache.text[key];
+
+  // Try IDB
+  try {
+    const cached = await idbGet('texts', key);
+    if (cached) {
+      state.cache.text[key] = cached;
+      return cached;
+    }
+  } catch {}
+
+  // Manifest tells us if the mirror has it
+  const safe = safeReportNum(report.report_number);
+  const entry = state.data.manifest?.texts?.[report.committee]?.[safe];
+  if (!entry) return null;
+
+  const url = DATA_BASE_URL + entry.url;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const text = await res.text();
+    state.cache.text[key] = text;
+    idbPut('texts', key, text).catch(() => {});
+    return text;
+  } catch (e) {
+    console.warn('Failed to fetch text', e);
+    return null;
+  }
+}
+
+// ── Filtering / sorting / rendering list ──────────
+function getAllReports() {
+  const out = [];
+  for (const [committee, list] of Object.entries(state.data.reports)) {
+    for (const r of list) {
+      out.push({ ...r, committee, _category: categoriseReport(r), _date: reportDate(r) });
+    }
+  }
+  return out;
+}
+
+function applyFilters() {
+  const all = getAllReports();
+  const f = state.filters;
+  const q = f.search.trim().toLowerCase();
+  const filtered = all.filter(r => {
+    if (f.committee && r.committee !== f.committee) return false;
+    if (f.ls && String(r.lok_sabha) !== f.ls) return false;
+    if (f.category && r._category !== f.category) return false;
+    if (q) {
+      const hay = (r.title || '').toLowerCase();
+      // Cheap full-text: also include cached text if available
+      const safe = safeReportNum(r.report_number);
+      const cachedText = state.cache.text[reportKey(r)];
+      const hit = hay.includes(q) || (cachedText && cachedText.toLowerCase().includes(q));
+      if (!hit) return false;
+    }
+    return true;
+  });
+  // Sort
+  filtered.sort((a, b) => {
+    switch (f.sort) {
+      case 'date_asc':    return (a._date || 0) - (b._date || 0);
+      case 'number_desc': return (b.report_number || 0) - (a.report_number || 0);
+      case 'number_asc':  return (a.report_number || 0) - (b.report_number || 0);
+      case 'committee':   return (a.committee || '').localeCompare(b.committee || '');
+      case 'date_desc':
+      default:            return (b._date || 0) - (a._date || 0);
+    }
+  });
+  state.filtered = filtered;
+  renderList();
+  renderResultsLine();
+}
+
+function renderResultsLine() {
+  const el = document.getElementById('resultsLine');
+  const total = getAllReports().length;
+  const shown = state.filtered.length;
+  const meta = state.data.meta;
+  let metaLine = '';
+  if (meta?.generated_at) {
+    metaLine = `Mirror updated <b>${escapeHtml(meta.generated_at.replace('T', ' ').replace('Z', ' UTC'))}</b>`;
+  }
+  el.innerHTML = `Showing <b>${shown}</b> of <b>${total}</b> reports across <b>${Object.keys(state.data.reports).length}</b> committees. ${metaLine}`;
+}
+
+function hasExtractedText(r) {
+  const safe = safeReportNum(r.report_number);
+  return !!state.data.manifest?.texts?.[r.committee]?.[safe];
+}
+function hasSummary(r) {
+  return !!state.cache.summaries[reportKey(r)];
+}
+
+function renderList() {
+  const list = document.getElementById('reportsList');
+  if (!state.filtered.length) {
+    list.innerHTML = `<div class="empty-state"><h3>No reports match</h3><p>Try clearing filters.</p></div>`;
+    return;
+  }
+  // Cap initial render to 200 for perf — we can virtualise later if needed
+  const slice = state.filtered.slice(0, 200);
+  list.innerHTML = slice.map(r => {
+    const committee = COMMITTEES[r.committee]?.name || r.committee;
+    const cat = r._category || 'SUBJ';
+    const catLabel = (CATEGORY_PATTERNS.find(p => p.code === cat) || { label: 'Subject' }).label;
+    const dateStr = formatDate(r._date);
+    const num = r.report_number != null ? `#${escapeHtml(r.report_number)}` : '';
+    return `
+      <div class="report-row" data-key="${escapeHtml(reportKey(r))}">
+        <div>
+          <div class="report-title">${escapeHtml(r.title || '(untitled report)')}</div>
+          <div class="report-meta">${escapeHtml(committee)} · LS${escapeHtml(r.lok_sabha || '?')} · ${num}</div>
+        </div>
+        <span class="house-pill house-${r.house || 'L'}">${r.house === 'R' ? 'RS' : 'LS'}</span>
+        <span class="cat-badge cat-${cat}" title="${escapeHtml(catLabel)}">${cat}</span>
+        <span class="report-meta">${escapeHtml(dateStr)}</span>
+        <span class="text-status ${hasSummary(r) ? 'summary' : (hasExtractedText(r) ? 'ok' : '')}">
+          ${hasSummary(r) ? 'summary' : (hasExtractedText(r) ? 'text' : 'metadata')}
+        </span>
+      </div>
+    `;
+  }).join('');
+  if (state.filtered.length > 200) {
+    list.insertAdjacentHTML('beforeend',
+      `<div class="empty-state" style="padding:18px"><p>Showing first 200 of ${state.filtered.length} matches — refine filters to narrow further.</p></div>`);
+  }
+}
+
+// ── Header stats ──────────────────────────────────
+function renderHeaderStats() {
+  const all = getAllReports();
+  const extracted = Object.values(state.data.manifest?.texts || {}).reduce((sum, c) => sum + Object.keys(c).length, 0);
+  document.getElementById('headerStats').innerHTML = `
+    <span><b>${all.length}</b> reports</span>
+    <span><b>${Object.keys(state.data.reports).length}</b> committees</span>
+    <span><b>${extracted}</b> with text</span>
+  `;
+}
+
+// ── Filter dropdown population ────────────────────
+function populateFilters() {
+  const cSel = document.getElementById('filterCommittee');
+  cSel.innerHTML = '<option value="">All committees</option>' +
+    Object.entries(COMMITTEES)
+      .filter(([k]) => state.data.reports[k]?.length)
+      .sort((a, b) => a[1].name.localeCompare(b[1].name))
+      .map(([k, v]) => `<option value="${k}">${escapeHtml(v.name)}${v.house === 'R' ? ' (RS)' : ''}</option>`)
+      .join('');
+
+  const lsSet = new Set();
+  for (const list of Object.values(state.data.reports)) for (const r of list) if (r.lok_sabha) lsSet.add(r.lok_sabha);
+  const lsSorted = [...lsSet].sort((a, b) => b - a);
+  document.getElementById('filterLS').innerHTML = '<option value="">All Lok Sabhas</option>' +
+    lsSorted.map(ls => `<option value="${ls}">LS ${ls}</option>`).join('');
+}
+
+// ── Report dialog ─────────────────────────────────
+function openReportByKey(key) {
+  const all = getAllReports();
+  const r = all.find(x => reportKey(x) === key);
+  if (!r) return;
+  state.selectedReport = r;
+  resetReportDialog();
+  document.getElementById('reportTitle').textContent = r.title || '(untitled)';
+  renderDetailsTab(r);
+  switchReportTab('details');
+  document.getElementById('reportModal').classList.add('open');
+}
+
+function resetReportDialog() {
+  document.getElementById('summaryBox').textContent = 'No summary yet.';
+  document.getElementById('copySummaryBtn').style.display = 'none';
+  document.getElementById('chatThread').innerHTML = `<div class="chat-msg system">Ask anything about this report. Your question + the report text are sent to the AI you configured (local Gemma or BYOK).</div>`;
+}
+
+function renderDetailsTab(r) {
+  const committee = COMMITTEES[r.committee]?.name || r.committee;
+  const safe = safeReportNum(r.report_number);
+  const upstream = `https://github.com/pranaykotas/parliamentwatch`;
+  document.getElementById('detailsTab').innerHTML = `
+    <dl class="meta-grid">
+      <dt>Committee</dt><dd>${escapeHtml(committee)} <span class="house-pill house-${r.house || 'L'}">${r.house === 'R' ? 'RS' : 'LS'}</span></dd>
+      <dt>Report no.</dt><dd>${escapeHtml(r.report_number ?? '—')}</dd>
+      <dt>Lok Sabha</dt><dd>${escapeHtml(r.lok_sabha ?? '—')}</dd>
+      <dt>Category</dt><dd><span class="cat-badge cat-${r._category}">${r._category}</span></dd>
+      <dt>Date of presentation</dt><dd>${escapeHtml(r.date_of_presentation || r.presented_in_ls || r.laid_in_rs || '—')}</dd>
+      <dt>Date of adoption</dt><dd>${escapeHtml(r.date_of_adoption || '—')}</dd>
+      ${r.pdf_url ? `<dt>PDF (English)</dt><dd><a href="${escapeHtml(r.pdf_url)}" target="_blank" rel="noopener">${escapeHtml(r.pdf_url.split('/').pop())}</a></dd>` : ''}
+      ${r.pdf_url_hindi ? `<dt>PDF (Hindi)</dt><dd><a href="${escapeHtml(r.pdf_url_hindi)}" target="_blank" rel="noopener">${escapeHtml(r.pdf_url_hindi.split('/').pop())}</a></dd>` : ''}
+      <dt>Source</dt><dd><a href="https://sansad.in" target="_blank">sansad.in</a> via <a href="${upstream}" target="_blank">ParliamentWatch</a></dd>
+    </dl>
+    <p style="margin-top:14px; font-size:0.82rem; color:var(--muted)">
+      ${hasExtractedText(r)
+        ? 'Full text has been extracted by the mirror — see the "Full text" tab or generate an AI summary.'
+        : 'Full text has not yet been extracted by the mirror. The daily Action picks reports up incrementally — check back, or open the PDF directly.'}
+    </p>
+  `;
+}
+
+async function loadTextTab() {
+  const r = state.selectedReport;
+  const tab = document.getElementById('textTab');
+  if (!r) { tab.innerHTML = ''; return; }
+  if (!hasExtractedText(r)) {
+    tab.innerHTML = `<p>Full text hasn't been extracted yet. Open the PDF link from the Details tab.</p>`;
+    return;
+  }
+  tab.innerHTML = `<p style="color:var(--muted)">Loading…</p>`;
+  const text = await fetchReportText(r);
+  if (!text) {
+    tab.innerHTML = `<p>Could not load the extracted text.</p>`;
+    return;
+  }
+  tab.innerHTML = `<pre>${escapeHtml(text)}</pre>`;
+  // Refresh list status badges (cached text now usable for search)
+  renderList();
+}
+
+function switchReportTab(name) {
+  document.querySelectorAll('#reportModal .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  document.querySelectorAll('#reportModal .tab-pane').forEach(p => p.classList.remove('active'));
+  document.getElementById(name + 'Tab').classList.add('active');
+  if (name === 'text') loadTextTab();
+  if (name === 'summary') {
+    const r = state.selectedReport;
+    const cached = r && state.cache.summaries[reportKey(r)];
+    if (cached) {
+      document.getElementById('summaryBox').textContent = cached;
+      document.getElementById('copySummaryBtn').style.display = '';
+    }
+  }
+}
+
+// ── AI: Local worker ──────────────────────────────
+function createLocalWorker() {
+  // Blob-URL ES module — same shape as LocalMind/VaultMind. The fetch
+  // intercept layer is omitted (we don't need resumable downloads for an
+  // initial release). If it becomes useful, copy the LocalMind version
+  // verbatim — the rest of this worker is its proper subset.
+  const code = `
+let env, AutoTokenizer, AutoProcessor, Gemma4ForConditionalGeneration, TextStreamer, InterruptableStoppingCriteria;
+let stopping_criteria;
+
+const __modReady = import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@4/+esm').then(m => {
+  env = m.env;
+  AutoTokenizer = m.AutoTokenizer;
+  AutoProcessor = m.AutoProcessor;
+  Gemma4ForConditionalGeneration = m.Gemma4ForConditionalGeneration;
+  TextStreamer = m.TextStreamer;
+  InterruptableStoppingCriteria = m.InterruptableStoppingCriteria;
+  env.allowLocalModels  = true;
+  env.localModelPath    = '/models/';
+  env.allowRemoteModels = true;
+  stopping_criteria = new InterruptableStoppingCriteria();
+});
+
+let processor = null;
+let tokenizer = null;
+let model = null;
+
+const progressCallback = (p) => self.postMessage({ type: 'progress', data: p });
+
+async function loadModel(modelId, dtype) {
+  processor = await AutoProcessor.from_pretrained(modelId, { progress_callback: progressCallback });
+  tokenizer = processor.tokenizer;
+  model = await Gemma4ForConditionalGeneration.from_pretrained(modelId, {
+    dtype, device: 'webgpu', progress_callback: progressCallback,
+  });
+  // Warmup: compile WebGPU shaders
+  self.postMessage({ type: 'warmup' });
+  const warmupInputs = tokenizer('a');
+  await model.generate({ ...warmupInputs, max_new_tokens: 1 });
+  self.postMessage({ type: 'ready' });
+}
+
+async function generate(messages, id, gc) {
+  stopping_criteria.reset();
+  try {
+    const prompt = processor.apply_chat_template(messages, { add_generation_prompt: true });
+    const inputs = await processor(prompt, null, null, { add_special_tokens: false });
+    const streamer = new TextStreamer(processor.tokenizer, {
+      skip_prompt: true,
+      skip_special_tokens: true,
+      callback_function: (text) => self.postMessage({ type: 'token', token: text, id }),
+    });
+    await model.generate({
+      ...inputs,
+      max_new_tokens: gc?.max_new_tokens || 1024,
+      do_sample: true,
+      temperature: gc?.temperature ?? 0.5,
+      top_k: gc?.top_k ?? 40,
+      top_p: gc?.top_p ?? 0.95,
+      repetition_penalty: gc?.repetition_penalty ?? 1.1,
+      streamer,
+      stopping_criteria,
+    });
+    self.postMessage({ type: 'complete', id });
+  } catch (err) {
+    self.postMessage({ type: 'error', id, message: err.message || String(err) });
+    self.postMessage({ type: 'complete', id });
+  }
+}
+
+self.addEventListener('message', async (e) => {
+  await __modReady;
+  const { type, modelId, dtype, messages, id, generationConfig } = e.data;
+  if (type === 'load') {
+    try { await loadModel(modelId, dtype); }
+    catch (err) { self.postMessage({ type: 'error', message: 'Failed to load model: ' + (err.message || String(err)) }); }
+  } else if (type === 'generate') {
+    await generate(messages, id, generationConfig);
+  } else if (type === 'stop') {
+    stopping_criteria?.interrupt();
+  }
+});
+`;
+  const blob = new Blob([code], { type: 'application/javascript' });
+  const w = new Worker(URL.createObjectURL(blob), { type: 'module' });
+
+  // Without this, blob-URL module workers fail completely silently.
+  w.addEventListener('error', (e) => {
+    console.error('Worker error:', e.message, e);
+    setLocalStatus('error', 'Worker error: ' + (e.message || 'unknown'));
+  });
+
+  w.addEventListener('message', (e) => {
+    const d = e.data;
+    if (d.type === 'progress') {
+      handleLoadProgress(d.data);
+    } else if (d.type === 'warmup') {
+      setLoadProgress(98, 'Compiling WebGPU shaders...');
+    } else if (d.type === 'ready') {
+      state.ai.workerReady = true;
+      state.ai.workerLoading = false;
+      setLoadProgress(100, '');
+      hideLoadProgress();
+      setLocalStatus('ready', MODELS[state.ai.localModel].label + ' ready');
+    } else if (d.type === 'token') {
+      const r = state.ai.pendingResolvers.get(d.id);
+      if (r) r.onToken(d.token);
+    } else if (d.type === 'complete') {
+      const r = state.ai.pendingResolvers.get(d.id);
+      if (r) {
+        r.onDone();
+        state.ai.pendingResolvers.delete(d.id);
+      }
+      state.ai.streaming = false;
+    } else if (d.type === 'error') {
+      const r = d.id != null ? state.ai.pendingResolvers.get(d.id) : null;
+      if (r) {
+        r.onErr(d.message);
+        state.ai.pendingResolvers.delete(d.id);
+      } else {
+        setLocalStatus('error', d.message);
+      }
+      state.ai.streaming = false;
+    }
+  });
+  return w;
+}
+
+function setLocalStatus(kind, text) {
+  const pill = document.getElementById('localStatus');
+  pill.classList.remove('ready', 'loading', 'error');
+  if (kind) pill.classList.add(kind);
+  document.getElementById('localStatusText').textContent = text;
+}
+
+function showLoadProgress() { document.getElementById('loadProgress').classList.add('visible'); }
+function hideLoadProgress() { document.getElementById('loadProgress').classList.remove('visible'); }
+function setLoadProgress(pct, label) {
+  document.getElementById('loadProgressFill').style.width = pct + '%';
+  document.getElementById('loadProgressText').textContent = label || '';
+}
+
+let _currentDownloadFile = '';
+function handleLoadProgress(p) {
+  showLoadProgress();
+  const fileName = p.file ? String(p.file).split('/').pop() : '';
+  if (fileName) _currentDownloadFile = fileName;
+  if (p.status === 'initiate') {
+    setLoadProgress(2, `Fetching ${fileName}...`);
+  } else if (p.status === 'progress_total' && p.loaded && p.total) {
+    const pct = Math.min(96, Math.round((p.loaded / p.total) * 100));
+    const mb = (p.loaded / 1048576).toFixed(0);
+    const tot = (p.total / 1048576).toFixed(0);
+    const label = _currentDownloadFile ? ` ${_currentDownloadFile}` : '';
+    setLoadProgress(pct, `Downloading${label} — ${mb}/${tot} MB (${pct}%)`);
+  } else if (p.status === 'loading') {
+    setLoadProgress(96, `Loading ${fileName} into memory...`);
+  }
+}
+
+async function loadLocalModel() {
+  if (!navigator.gpu) {
+    setLocalStatus('error', 'WebGPU not available — switch to BYOK mode');
+    return;
+  }
+  if (state.ai.workerLoading) return;
+  if (state.ai.workerReady) { setLocalStatus('ready', MODELS[state.ai.localModel].label + ' ready'); return; }
+  state.ai.workerLoading = true;
+  setLocalStatus('loading', 'Starting worker...');
+  showLoadProgress();
+  setLoadProgress(1, 'Initialising...');
+
+  if (state.ai.worker) { try { state.ai.worker.terminate(); } catch {} }
+  state.ai.worker = createLocalWorker();
+  const m = MODELS[state.ai.localModel];
+  state.ai.worker.postMessage({ type: 'load', modelId: m.id, dtype: m.dtype });
+}
+
+async function isModelCached(modelId) {
+  try {
+    const names = await caches.keys();
+    for (const name of names) {
+      const cache = await caches.open(name);
+      const keys = await cache.keys();
+      if (keys.some(req => req.url.includes(modelId))) return true;
+    }
+  } catch {}
+  return false;
+}
+
+async function clearModelCache() {
+  if (!confirm('Clear cached model weights? Next load will re-download.')) return;
+  try {
+    const names = await caches.keys();
+    for (const name of names) await caches.delete(name);
+    setLocalStatus('', 'Cache cleared — load again');
+    state.ai.workerReady = false;
+    if (state.ai.worker) { state.ai.worker.terminate(); state.ai.worker = null; }
+    showToast('Model cache cleared');
+  } catch (e) {
+    showToast('Could not clear cache');
+  }
+}
+
+// ── AI: API providers (BYOK) ──────────────────────
+function getApiConfig() {
+  const provider = state.ai.apiProvider;
+  const def = PROVIDER_DEFAULTS[provider];
+  return {
+    provider,
+    style: def.style,
+    url: state.ai.apiBaseUrl || def.url,
+    model: state.ai.apiModel || def.model,
+    apiKey: state.ai.apiKey,
+    noAuth: !!def.noAuth,
+  };
+}
+
+async function generateApi(messages, onToken, signal) {
+  const cfg = getApiConfig();
+  if (!cfg.apiKey && !cfg.noAuth) throw new Error('Set an API key in Settings first.');
+  if (!cfg.url) throw new Error('Set a Base URL in Settings (custom provider).');
+
+  if (cfg.style === 'anthropic') return generateAnthropic(messages, onToken, signal, cfg);
+  return generateOpenAICompatible(messages, onToken, signal, cfg);
+}
+
+async function generateAnthropic(messages, onToken, signal, cfg) {
+  // Convert OpenAI-shape messages to Anthropic. First system message becomes
+  // the top-level system field; the rest stay as user/assistant turns.
+  let system = '';
+  const turns = [];
+  for (const m of messages) {
+    if (m.role === 'system') system = (system ? system + '\n\n' : '') + m.content;
+    else turns.push({ role: m.role, content: [{ type: 'text', text: m.content }] });
+  }
+  const body = {
+    model: cfg.model,
+    system: system || undefined,
+    messages: turns,
+    max_tokens: 1024,
+    stream: true,
+  };
+  const res = await fetch(cfg.url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'anthropic-version': '2023-06-01',
+      'x-api-key': cfg.apiKey,
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok) throw new Error(`Anthropic ${res.status}: ${(await res.text()).slice(0, 240)}`);
+
+  // SSE — Anthropic streams content_block_delta { delta: { type:'text_delta', text:'…' } }
+  await streamSSE(res, (line) => {
+    try {
+      const j = JSON.parse(line);
+      if (j.type === 'content_block_delta' && j.delta?.type === 'text_delta' && j.delta?.text) {
+        onToken(j.delta.text);
+      }
+    } catch {}
+  });
+}
+
+async function generateOpenAICompatible(messages, onToken, signal, cfg) {
+  const body = {
+    model: cfg.model,
+    messages,
+    stream: true,
+    max_tokens: 1024,
+  };
+  const headers = { 'Content-Type': 'application/json' };
+  if (!cfg.noAuth) headers['Authorization'] = `Bearer ${cfg.apiKey}`;
+  // OpenRouter requires HTTP-Referer or X-Title for free tier
+  if (cfg.provider === 'openrouter') {
+    headers['HTTP-Referer'] = location.origin;
+    headers['X-Title'] = 'SansadLocal';
+  }
+  const res = await fetch(cfg.url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok) throw new Error(`${cfg.provider} ${res.status}: ${(await res.text()).slice(0, 240)}`);
+
+  await streamSSE(res, (line) => {
+    if (line === '[DONE]') return;
+    try {
+      const j = JSON.parse(line);
+      const tok = j.choices?.[0]?.delta?.content;
+      if (tok) onToken(tok);
+    } catch {}
+  });
+}
+
+async function streamSSE(res, onLine) {
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const lines = buf.split('\n');
+    buf = lines.pop();
+    for (const ln of lines) {
+      if (ln.startsWith('data: ')) onLine(ln.slice(6).trim());
+    }
+  }
+}
+
+// ── AI: unified generate (local OR API) ───────────
+async function aiGenerate(messages, onToken) {
+  if (state.ai.streaming) throw new Error('Already generating — wait or stop.');
+  state.ai.streaming = true;
+  try {
+    if (state.ai.mode === 'api') {
+      state.ai.abortController = new AbortController();
+      try {
+        await generateApi(messages, onToken, state.ai.abortController.signal);
+      } finally {
+        state.ai.abortController = null;
+      }
+    } else {
+      if (!navigator.gpu) throw new Error('WebGPU not available — switch to BYOK mode in Settings.');
+      if (!state.ai.workerReady) throw new Error('Local model not loaded. Open Settings → Load.');
+      const id = ++state.ai.msgIdCounter;
+      const m = MODELS[state.ai.localModel];
+      await new Promise((resolve, reject) => {
+        state.ai.pendingResolvers.set(id, {
+          onToken,
+          onDone: resolve,
+          onErr: reject,
+        });
+        state.ai.worker.postMessage({
+          type: 'generate',
+          messages,
+          id,
+          generationConfig: m.genConfig,
+        });
+      });
+    }
+  } finally {
+    state.ai.streaming = false;
+  }
+}
+
+function aiStop() {
+  if (state.ai.mode === 'api' && state.ai.abortController) {
+    state.ai.abortController.abort();
+  } else if (state.ai.worker) {
+    state.ai.worker.postMessage({ type: 'stop' });
+  }
+  state.ai.streaming = false;
+}
+
+// ── Summarise / Q&A flows ─────────────────────────
+function _truncateForContext(text) {
+  // Local Gemma E2B has 8K context — leave room for prompt + output.
+  // Use ~6K input chars (each token ≈ 4 chars in English, so ~1500 tokens).
+  // For API providers we have more room — cap at 32K just to keep things sane.
+  const limit = state.ai.mode === 'local' ? 12000 : 60000;
+  if (text.length <= limit) return text;
+  return text.slice(0, limit) + '\n\n[...truncated for context window...]';
+}
+
+async function generateSummary() {
+  const r = state.selectedReport;
+  if (!r) return;
+  const text = await fetchReportText(r);
+  if (!text) {
+    showToast('Full text not available — extract pending');
+    return;
+  }
+  const prompt = SUMMARY_PROMPT.replace('{TEXT}', _truncateForContext(text));
+  const messages = [
+    { role: 'system', content: 'You are a careful, accurate summariser of policy documents.' },
+    { role: 'user', content: prompt },
+  ];
+  const box = document.getElementById('summaryBox');
+  box.textContent = '';
+  document.getElementById('generateSummaryBtn').disabled = true;
+  document.getElementById('copySummaryBtn').style.display = 'none';
+  let acc = '';
+  try {
+    await aiGenerate(messages, (tok) => {
+      acc += tok;
+      box.textContent = acc;
+    });
+    state.cache.summaries[reportKey(r)] = acc;
+    idbPut('summaries', reportKey(r), acc).catch(() => {});
+    document.getElementById('copySummaryBtn').style.display = '';
+    renderList();  // refresh badges
+  } catch (e) {
+    box.textContent = 'Error: ' + e.message;
+  } finally {
+    document.getElementById('generateSummaryBtn').disabled = false;
+  }
+}
+
+async function chatSend() {
+  const r = state.selectedReport;
+  if (!r) return;
+  const input = document.getElementById('chatInput');
+  const q = input.value.trim();
+  if (!q) return;
+  if (state.ai.streaming) { showToast('Already responding…'); return; }
+
+  const text = await fetchReportText(r);
+  if (!text) { showToast('Full text not available'); return; }
+
+  // UI: append user, prep assistant bubble
+  const thread = document.getElementById('chatThread');
+  thread.insertAdjacentHTML('beforeend', `<div class="chat-msg user">${escapeHtml(q)}</div>`);
+  const aEl = document.createElement('div');
+  aEl.className = 'chat-msg assistant';
+  thread.appendChild(aEl);
+  thread.scrollTop = thread.scrollHeight;
+  input.value = '';
+
+  const messages = [
+    { role: 'system', content: 'You answer questions about Indian Parliamentary Standing Committee reports. Use only the supplied report text. If the answer is not present, say so.' },
+    { role: 'user', content: QA_PROMPT_PREFIX.replace('{TEXT}', _truncateForContext(text)) + q },
+  ];
+  document.getElementById('chatStopBtn').style.display = '';
+  document.getElementById('chatSendBtn').disabled = true;
+  let acc = '';
+  try {
+    await aiGenerate(messages, (tok) => {
+      acc += tok;
+      aEl.textContent = acc;
+      thread.scrollTop = thread.scrollHeight;
+    });
+  } catch (e) {
+    aEl.textContent = 'Error: ' + e.message;
+    aEl.style.background = 'var(--red-bg)';
+    aEl.style.borderColor = 'var(--red)';
+  } finally {
+    document.getElementById('chatStopBtn').style.display = 'none';
+    document.getElementById('chatSendBtn').disabled = false;
+  }
+}
+
+// ── Modal management ──────────────────────────────
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// ── Settings UI ───────────────────────────────────
+function renderSettings() {
+  document.getElementById('aiMode').value = state.ai.mode;
+  document.getElementById('localModel').value = state.ai.localModel;
+  document.getElementById('apiProvider').value = state.ai.apiProvider;
+  document.getElementById('apiKey').value = state.ai.apiKey || '';
+  document.getElementById('apiModel').value = state.ai.apiModel || '';
+  document.getElementById('apiBaseUrl').value = state.ai.apiBaseUrl || '';
+  toggleAISections();
+  toggleProviderRows();
+  // Data section
+  const meta = state.data.meta;
+  document.getElementById('dataInfo').textContent = meta
+    ? `Last updated ${meta.generated_at} · ${meta.total_reports} reports total · text limit ${meta.text_limit_per_committee || '?'} per committee`
+    : `Source: ${DATA_BASE_URL}`;
+  // Status pill
+  if (state.ai.workerReady) setLocalStatus('ready', MODELS[state.ai.localModel].label + ' ready');
+  else if (state.ai.workerLoading) setLocalStatus('loading', 'Loading…');
+  else if (!navigator.gpu) setLocalStatus('error', 'WebGPU not available');
+  else setLocalStatus('', 'Not loaded');
+  // Cached?
+  isModelCached(MODELS[state.ai.localModel].id).then(cached => {
+    if (!state.ai.workerReady && !state.ai.workerLoading) {
+      setLocalStatus('', cached ? 'Cached — click Load to enable' : 'Not loaded');
+    }
+  });
+}
+
+function toggleAISections() {
+  const mode = document.getElementById('aiMode').value;
+  document.getElementById('localAISection').style.display = mode === 'local' ? '' : 'none';
+  document.getElementById('apiAISection').style.display   = mode === 'api'   ? '' : 'none';
+}
+function toggleProviderRows() {
+  const p = document.getElementById('apiProvider').value;
+  // Show base URL row for ollama / custom (and lets user override others if they want).
+  document.getElementById('baseUrlRow').style.display = (p === 'ollama' || p === 'custom') ? '' : 'none';
+  // Update placeholder
+  const def = PROVIDER_DEFAULTS[p];
+  document.getElementById('apiModel').placeholder = def.model;
+  document.getElementById('apiBaseUrl').placeholder = def.url;
+}
+
+function applySettingsFromUI() {
+  state.ai.mode        = document.getElementById('aiMode').value;
+  state.ai.localModel  = document.getElementById('localModel').value;
+  state.ai.apiProvider = document.getElementById('apiProvider').value;
+  state.ai.apiKey      = document.getElementById('apiKey').value.trim();
+  state.ai.apiModel    = document.getElementById('apiModel').value.trim();
+  state.ai.apiBaseUrl  = document.getElementById('apiBaseUrl').value.trim();
+  saveSettings();
+}
+
+// ── Init ──────────────────────────────────────────
+function attachHandlers() {
+  // Filter inputs
+  const debounced = debounce(() => { state.filters.search = document.getElementById('filterSearch').value; applyFilters(); }, 200);
+  document.getElementById('filterSearch').addEventListener('input', debounced);
+  document.getElementById('filterCommittee').addEventListener('change', e => { state.filters.committee = e.target.value; applyFilters(); });
+  document.getElementById('filterLS').addEventListener('change', e => { state.filters.ls = e.target.value; applyFilters(); });
+  document.getElementById('filterCategory').addEventListener('change', e => { state.filters.category = e.target.value; applyFilters(); });
+  document.getElementById('filterSort').addEventListener('change', e => { state.filters.sort = e.target.value; applyFilters(); });
+  document.getElementById('resetFiltersBtn').addEventListener('click', () => {
+    state.filters = { search: '', committee: '', ls: '', category: '', sort: 'date_desc' };
+    document.getElementById('filterSearch').value = '';
+    document.getElementById('filterCommittee').value = '';
+    document.getElementById('filterLS').value = '';
+    document.getElementById('filterCategory').value = '';
+    document.getElementById('filterSort').value = 'date_desc';
+    applyFilters();
+  });
+
+  // Reports list (event delegation)
+  document.getElementById('reportsList').addEventListener('click', e => {
+    const row = e.target.closest('.report-row');
+    if (row) openReportByKey(row.dataset.key);
+  });
+
+  // Report dialog
+  document.getElementById('reportCloseBtn').addEventListener('click', () => closeModal('reportModal'));
+  document.querySelectorAll('#reportModal .tab-btn').forEach(b => {
+    b.addEventListener('click', () => switchReportTab(b.dataset.tab));
+  });
+  document.getElementById('generateSummaryBtn').addEventListener('click', generateSummary);
+  document.getElementById('copySummaryBtn').addEventListener('click', () => {
+    navigator.clipboard.writeText(document.getElementById('summaryBox').textContent || '');
+    showToast('Copied');
+  });
+  document.getElementById('chatSendBtn').addEventListener('click', chatSend);
+  document.getElementById('chatStopBtn').addEventListener('click', aiStop);
+  document.getElementById('chatInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); chatSend(); }
+  });
+
+  // Settings modal
+  document.getElementById('settingsBtn').addEventListener('click', () => { renderSettings(); openModal('settingsModal'); });
+  document.getElementById('settingsCloseBtn').addEventListener('click', () => closeModal('settingsModal'));
+  document.getElementById('aiMode').addEventListener('change', toggleAISections);
+  document.getElementById('apiProvider').addEventListener('change', toggleProviderRows);
+  document.getElementById('loadModelBtn').addEventListener('click', () => { applySettingsFromUI(); loadLocalModel(); });
+  document.getElementById('clearCacheBtn').addEventListener('click', clearModelCache);
+  document.getElementById('refreshDataBtn').addEventListener('click', async () => {
+    showToast('Refreshing…');
+    await fetchData(true);
+    populateFilters();
+    renderHeaderStats();
+    applyFilters();
+    renderSettings();
+    showToast('Data refreshed');
+  });
+  document.getElementById('saveSettingsBtn').addEventListener('click', () => {
+    applySettingsFromUI();
+    closeModal('settingsModal');
+    showToast('Settings saved');
+  });
+
+  // Help modal
+  document.getElementById('helpBtn').addEventListener('click', () => openModal('helpModal'));
+  document.getElementById('helpCloseBtn').addEventListener('click', () => closeModal('helpModal'));
+  document.querySelectorAll('#helpModal .tab-btn').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('#helpModal .tab-btn').forEach(x => x.classList.toggle('active', x === b));
+      document.querySelectorAll('#helpModal .tab-pane').forEach(p => p.classList.remove('active'));
+      const id = { about: 'hAbout', browse: 'hBrowse', ai: 'hAI', privacy: 'hPrivacy' }[b.dataset.htab];
+      document.getElementById(id).classList.add('active');
+    });
+  });
+
+  // Backdrop close
+  document.querySelectorAll('.modal-bg').forEach(bg => {
+    bg.addEventListener('click', e => { if (e.target === bg) bg.classList.remove('open'); });
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      document.querySelectorAll('.modal-bg.open').forEach(m => m.classList.remove('open'));
+    }
+  });
+}
+
+function debounce(fn, ms) {
+  let t;
+  return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+}
+
+async function loadCachedSummaries() {
+  // On startup, hydrate cached summaries from IDB into memory so badges
+  // render immediately. Just store keys we care about — don't pull all
+  // values eagerly (they could be hundreds of KB).
+  try {
+    const db = await openIDB();
+    const tx = db.transaction('summaries', 'readonly');
+    const store = tx.objectStore('summaries');
+    const req = store.getAllKeys();
+    req.onsuccess = async () => {
+      for (const k of req.result || []) {
+        const v = await idbGet('summaries', k);
+        if (v) state.cache.summaries[k] = v;
+      }
+      renderList();
+    };
+  } catch {}
+}
+
+(async function init() {
+  loadSettings();
+  attachHandlers();
+  const ok = await fetchData();
+  if (!ok) return;  // splash error already shown
+  populateFilters();
+  renderHeaderStats();
+  applyFilters();
+  loadCachedSummaries();
+  // If a model is already cached, surface that hint immediately
+  isModelCached(MODELS[state.ai.localModel].id).then(cached => {
+    if (cached) showToast('Local model cached — open Settings to load');
+  });
+})();
+</script>
+</body>
+</html>
