@@ -194,6 +194,24 @@ th { background: var(--surface2); font-weight: 600; }
   color: var(--muted);
 }
 .footer-back a { color: var(--accent); }
+
+img.shot {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin: 14px 0;
+  box-shadow: 0 2px 8px rgba(42, 31, 16, 0.06);
+}
+.caption {
+  font-size: 0.82rem;
+  color: var(--muted);
+  text-align: center;
+  margin-top: -8px;
+  margin-bottom: 18px;
+  font-style: italic;
+}
 </style>
 </head>
 <body>
@@ -233,6 +251,8 @@ th { background: var(--surface2); font-weight: 600; }
 </ul>
 
 <h2 id="interface">2. The interface at a glance</h2>
+<img class="shot" src="img/01-overview.jpg" alt="SansadLocal main view: header with brand, stats, AI pill, settings, help; filter row; toolbar with batch summarise + export; report list with status badges">
+<p class="caption">Main view — top header, filters, toolbar, sortable report list.</p>
 <p>The header runs across the top:</p>
 <div class="mock-header">
   <span class="brand">SansadLocal</span>
@@ -279,6 +299,8 @@ th { background: var(--surface2); font-weight: 600; }
 </ul>
 
 <h2 id="report">4. Reading a report</h2>
+<img class="shot" src="img/05-report-details.jpg" alt="Report dialog open on a Standing Committee on Coal, Mines and Steel report, Details tab showing committee, report no., dates, PDF links">
+<p class="caption">Report dialog — Details tab. PDF links go straight to sansad.in.</p>
 <p>Click any row to open a four-tab dialog:</p>
 <div class="mock-tabs">
   <span class="mock-tab active">Details</span>
@@ -297,6 +319,8 @@ th { background: var(--surface2); font-weight: 600; }
 <h2 id="ai-setup">5. Setting up AI</h2>
 <p>Click the <span class="kbd">⚙</span> Settings icon in the header (or the AI status pill). Pick one of two modes:</p>
 
+<img class="shot" src="img/02-settings-local.jpg" alt="Settings modal: AI mode = Local AI (WebGPU, Gemma); Local AI section with Model dropdown, Status pill, Load + Clear cache buttons">
+<p class="caption">Settings → Local AI section.</p>
 <h3>Option A — Local AI (default, no key, free)</h3>
 <p>Runs an open-weight model entirely in your browser via <a href="https://huggingface.co/docs/transformers.js" target="_blank">Transformers.js</a> on WebGPU. The first load downloads weights from Hugging Face; the browser caches them so subsequent visits are instant.</p>
 <table>
@@ -319,6 +343,8 @@ th { background: var(--surface2); font-weight: 600; }
 <div class="callout warn"><b>Requirements.</b> WebGPU is needed. Recent Chrome / Edge / Brave (113+), Firefox 130+ on a recent device. If your browser doesn't support WebGPU the local-AI option is disabled and you'll see "No WebGPU" in the pill — switch to BYOK mode.</div>
 
 <h3>Option B — BYOK (Bring Your Own Key)</h3>
+<img class="shot" src="img/03-settings-byok.jpg" alt="Settings modal: AI mode = BYOK; BYOK provider section with Provider dropdown (Anthropic), API key field, Model field">
+<p class="caption">Settings → BYOK section. Provider list mirrors upstream ParliamentWatch.</p>
 <p>Send the request directly from your browser to the provider you choose. Your key stays in this browser's <code>localStorage</code> — never sent to any other server.</p>
 <ol class="flow">
   <li>Open Settings. AI mode = <em>BYOK</em>.</li>
@@ -328,6 +354,8 @@ th { background: var(--surface2); font-weight: 600; }
 </ol>
 
 <h2 id="summary">6. Generating an AI summary</h2>
+<img class="shot" src="img/06-report-summary.jpg" alt="Report dialog AI summary tab with a generated summary about a Standing Committee report on AI in Electronics & IT">
+<p class="caption">AI summary tab — a freshly-generated 4-section briefing.</p>
 <ol class="flow">
   <li>Make sure AI is configured (Local model loaded, or BYOK key saved).</li>
   <li>Click any report row to open the dialog.</li>
@@ -338,6 +366,8 @@ th { background: var(--surface2); font-weight: 600; }
 <div class="callout tip">Switching tabs while a summary is streaming — say to peek at the Full text — won't lose progress. Switch back and the latest token count is what you'll see.</div>
 
 <h2 id="ask">7. Asking questions about a report</h2>
+<img class="shot" src="img/07-report-ask.jpg" alt="Report dialog Ask tab with system message and a chat input with Send button">
+<p class="caption">Ask tab — chat input scoped to the open report.</p>
 <ol class="flow">
   <li>From the dialog, switch to the <b>Ask</b> tab.</li>
   <li>Type a question. Press <span class="kbd">Enter</span> or click <b>Send</b>.</li>
@@ -347,6 +377,8 @@ th { background: var(--surface2); font-weight: 600; }
 <div class="callout">Ask uses any cached AI summary as additional context, so generating a summary first sometimes produces sharper answers — especially for "what does this report recommend?" style questions.</div>
 
 <h2 id="search-enrich">8. Web-search enrichment for Ask</h2>
+<img class="shot" src="img/04-settings-search.jpg" alt="Settings modal Web search section with Provider = Tavily, API key field, Save button">
+<p class="caption">Settings → Web search section.</p>
 <p>Optional. When configured, you get a <span class="kbd">🌐</span> button next to <b>Send</b> in the Ask tab. Clicking it does a web search first and feeds the top results into the prompt alongside the report text. Useful for "is there recent news on this?" or "has the government acted on this since the report?" style follow-ups.</p>
 <table>
   <thead><tr><th>Provider</th><th>Free tier</th><th>Where to get a key</th></tr></thead>
@@ -495,8 +527,10 @@ th { background: var(--surface2); font-weight: 600; }
 <h3>The mirror is missing data</h3>
 <p>The daily action runs at 04:30 UTC (10:00 IST). If a new report shows up on sansad.in mid-day, it'll appear in SansadLocal the next morning. Settings → <b>Refresh from mirror</b> force-fetches; on a fresh visit the latest data loads automatically.</p>
 
-<h3>How do I add my own screenshots to this guide?</h3>
-<p>Drop PNG files into <code>/guide/img/</code> in the SansadLocal repo. Reference them as <code>&lt;img src="img/your-file.png"&gt;</code> from this page.</p>
+<h3>Where do credits live?</h3>
+<img class="shot" src="img/08-help-credits.jpg" alt="Help modal Credits tab showing Built on top of ParliamentWatch, open-source pieces (Transformers.js, Gemma 4 ONNX, pypdf, GitHub Pages), built by Chirag Patnaik, source links">
+<p class="caption">Help → Credits tab. Open from the <span class="kbd">?</span> button in the header.</p>
+<p>Built on top of <a href="https://github.com/pranaykotas/parliamentwatch" target="_blank">ParliamentWatch</a> by Pranay Kotasthane — the scraper, committee config, and original idea are his. SansadLocal repackages it with on-device AI. Full credit list in the Help → Credits tab.</p>
 
 <div class="footer-back">
   <a href="../">← Back to SansadLocal</a> ·

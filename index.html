@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="author" content="Chirag Patnaik">
-<meta name="version" content="0.3.0">
+<meta name="version" content="0.3.1">
 <meta name="description" content="Browse Indian Parliamentary Committee reports with private, on-device AI. No server, no API key required, no data leaving your device.">
 <title>SansadLocal — Parliamentary Committee Reports</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23f5efe2'/%3E%3Cpath d='M6 24h20M8 24V14M12 24V14M16 24V14M20 24V14M24 24V14M5 14h22L16 6z' stroke='%23cc5500' stroke-width='1.6' fill='none' stroke-linejoin='round'/%3E%3C/svg%3E">
@@ -1114,7 +1114,8 @@ const state = {
 
   ai: {
     mode: 'local',                       // 'local' | 'api'
-    localModel: 'gemma4-e2b',
+    localModel: 'gemma4-e2b',            // currently SELECTED model (UI/state)
+    loadedModel: null,                   // model key actually warm in the worker (null = none)
     worker: null,
     workerReady: false,
     workerLoading: false,
@@ -1786,9 +1787,14 @@ self.addEventListener('message', async (e) => {
       const wasLoading = state.ai.workerLoading;
       state.ai.workerReady = true;
       state.ai.workerLoading = false;
+      // Whichever model the worker just finished warming is now the actually-
+      // loaded one. Track it separately from state.ai.localModel (the UI
+      // selection) so a subsequent Load click after switching the dropdown
+      // can detect the mismatch and actually reload.
+      state.ai.loadedModel = state.ai.localModel;
       setLoadProgress(100, '');
       hideLoadProgress();
-      setLocalStatus('ready', MODELS[state.ai.localModel].label + ' ready');
+      setLocalStatus('ready', MODELS[state.ai.loadedModel].label + ' ready');
       // Pulse the header pill once + nudge the user toward the next step.
       const pill = document.getElementById('aiPill');
       pill.classList.add('pulse');
@@ -1932,13 +1938,23 @@ async function loadLocalModel() {
     return;
   }
   if (state.ai.workerLoading) return;
-  if (state.ai.workerReady) { setLocalStatus('ready', MODELS[state.ai.localModel].label + ' ready'); return; }
+  // Already warm with the SAME model? No-op, just redraw the status pill.
+  if (state.ai.workerReady && state.ai.loadedModel === state.ai.localModel) {
+    setLocalStatus('ready', MODELS[state.ai.localModel].label + ' ready');
+    return;
+  }
+  // Otherwise (different model selected, or no model loaded yet) tear down
+  // any existing worker and start fresh. Without this, switching from
+  // Gemma 4 E2B to e.g. Bonsai 8B used to short-circuit the load and just
+  // relabel the pill.
+  if (state.ai.worker) { try { state.ai.worker.terminate(); } catch {} state.ai.worker = null; }
+  state.ai.workerReady = false;
+  state.ai.loadedModel = null;
   state.ai.workerLoading = true;
   setLocalStatus('loading', 'Starting worker...');
   showLoadProgress();
   setLoadProgress(1, 'Initialising...');
 
-  if (state.ai.worker) { try { state.ai.worker.terminate(); } catch {} }
   state.ai.worker = createLocalWorker();
   const m = MODELS[state.ai.localModel];
   state.ai.worker.postMessage({ type: 'load', modelId: m.id, modelType: m.type, dtype: m.dtype });
@@ -1963,6 +1979,7 @@ async function clearModelCache() {
     for (const name of names) await caches.delete(name);
     setLocalStatus('', 'Cache cleared — load again');
     state.ai.workerReady = false;
+    state.ai.loadedModel = null;
     if (state.ai.worker) { state.ai.worker.terminate(); state.ai.worker = null; }
     showToast('Model cache cleared');
   } catch (e) {
