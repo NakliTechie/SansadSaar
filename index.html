@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="author" content="Chirag Patnaik">
-<meta name="version" content="0.3.1">
+<meta name="version" content="0.3.2">
 <meta name="description" content="Browse Indian Parliamentary Committee reports with private, on-device AI. No server, no API key required, no data leaving your device.">
 <title>SansadLocal — Parliamentary Committee Reports</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23f5efe2'/%3E%3Cpath d='M6 24h20M8 24V14M12 24V14M16 24V14M20 24V14M24 24V14M5 14h22L16 6z' stroke='%23cc5500' stroke-width='1.6' fill='none' stroke-linejoin='round'/%3E%3C/svg%3E">
@@ -510,6 +510,18 @@ main {
   color: var(--muted);
   margin-bottom: 8px;
 }
+.settings-warning {
+  font-size: 0.82rem;
+  background: var(--amber-bg);
+  border: 1px solid var(--amber);
+  border-left-width: 3px;
+  color: var(--amber);
+  padding: 8px 12px;
+  border-radius: 4px;
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+.settings-warning b { color: var(--amber); }
 .settings-row {
   display: grid;
   grid-template-columns: 140px 1fr;
@@ -704,7 +716,6 @@ main {
   </div>
   <div class="results-line" id="resultsLine"></div>
   <div class="toolbar" id="toolbar">
-    <button class="sm" id="batchSummariseBtn" title="Summarise all reports in the current filter that have extracted text">&#10024; Summarise filtered</button>
     <button class="sm" id="exportMetaBtn" title="Export filtered metadata as CSV">&#11015; Metadata (CSV)</button>
     <button class="sm" id="exportSummariesBtn" title="Export all cached AI summaries as Markdown">&#11015; Summaries (MD)</button>
   </div>
@@ -771,6 +782,9 @@ main {
 
       <div class="settings-section" id="localAISection">
         <h3>Local AI</h3>
+        <div class="settings-warning">
+          <b>Heads up:</b> larger models (Gemma 4 E4B, Bonsai 4B/8B) need a recent GPU and can slow your computer noticeably during generation. If yours feels sluggish or you want faster responses, switch <b>AI mode</b> to <b>BYOK</b> — Gemini, Groq, and OpenRouter all have free tiers that respond in seconds.
+        </div>
         <div class="settings-row">
           <label>Model</label>
           <select id="localModel">
@@ -1133,6 +1147,7 @@ const state = {
   cache: {
     summaries: {},                       // reportKey -> string (also acts as the live source during streaming)
     text: {},                            // reportKey -> string (in-memory only, IDB-backed)
+    chats: {},                           // reportKey -> [{role, content, error?}] (IDB-backed)
   },
 
   // Per-report-dialog transient chat state. Cleared on each new report. Each
@@ -1145,9 +1160,6 @@ const state = {
   // Background full-text index — fills in by fetching every extracted text
   // file once. Search reads state.cache.text which this populates.
   fullTextIndex: { loading: false, loaded: 0, total: 0, fullyLoaded: false },
-
-  // Batch summary state — set while a "Summarise filtered" run is in progress.
-  batch: { running: false, total: 0, done: 0, cancel: false },
 
   // Web search enrichment for Ask. Provider settings are persisted in
   // localStorage alongside the AI settings.
@@ -1188,7 +1200,10 @@ function saveSettings() {
 }
 
 const IDB_NAME = 'sansadlocal';
-const IDB_VERSION = 1;
+// v2 added the 'chats' store. Existing v1 databases auto-upgrade because the
+// onupgradeneeded handler is idempotent — old stores already exist, new one
+// gets created.
+const IDB_VERSION = 2;
 function openIDB() {
   return new Promise((resolve, reject) => {
     const r = indexedDB.open(IDB_NAME, IDB_VERSION);
@@ -1196,7 +1211,8 @@ function openIDB() {
       const db = r.result;
       if (!db.objectStoreNames.contains('summaries')) db.createObjectStore('summaries');
       if (!db.objectStoreNames.contains('texts'))     db.createObjectStore('texts');
-      if (!db.objectStoreNames.contains('blobs'))     db.createObjectStore('blobs');  // reports.json + manifest.json
+      if (!db.objectStoreNames.contains('blobs'))     db.createObjectStore('blobs');   // reports.json + manifest.json
+      if (!db.objectStoreNames.contains('chats'))     db.createObjectStore('chats');   // per-report Q&A threads
     };
     r.onsuccess = () => resolve(r.result);
     r.onerror = () => reject(r.error);
@@ -1415,14 +1431,6 @@ function renderResultsLine() {
   el.innerHTML = `Showing <b>${shown}</b> of <b>${total}</b> reports across <b>${Object.keys(state.data.reports).length}</b> committees. ${metaLine} ${indexLine}`;
 
   // Toolbar button states
-  const batchBtn = document.getElementById('batchSummariseBtn');
-  if (batchBtn) {
-    const eligible = state.filtered.filter(r => hasExtractedText(r) && !hasSummary(r));
-    batchBtn.disabled = !isAIUsable() || eligible.length === 0 || state.batch?.running;
-    batchBtn.textContent = state.batch?.running
-      ? `✨ Summarising ${state.batch.done}/${state.batch.total}…`
-      : `✨ Summarise filtered${eligible.length ? ` (${eligible.length})` : ''}`;
-  }
   const sumBtn = document.getElementById('exportSummariesBtn');
   if (sumBtn) {
     const n = Object.keys(state.cache.summaries || {}).length;
@@ -1513,7 +1521,9 @@ function openReportByKey(key) {
     aiStop();
   }
   state.selectedReport = r;
-  resetReportDialog();
+  // Hydrate any previously-saved chat thread for this report. Falls back to
+  // an empty array — first-time open shows the "Ask anything..." system row.
+  state.dialogChat = state.cache.chats[key] ? [...state.cache.chats[key]] : [];
   document.getElementById('reportTitle').textContent = r.title || '(untitled)';
   renderDetailsTab(r);
   switchReportTab('details');
@@ -1521,7 +1531,9 @@ function openReportByKey(key) {
 }
 
 function resetReportDialog() {
-  state.dialogChat = [];   // fresh chat per report; persisted in-memory only across tab switches
+  // No-op now — dialogChat hydration is handled in openReportByKey from the
+  // IDB-backed cache.cache.chats. Kept as a hook in case future state needs
+  // resetting per-report.
 }
 
 function renderDetailsTab(r) {
@@ -2275,6 +2287,12 @@ async function chatSend(opts) {
   } finally {
     state.ai.streamingContext = null;
     renderChatTab();
+    // Persist the thread for this report so closing the dialog (or the tab)
+    // doesn't wipe the Q&A history. Fire-and-forget — IDB write failures
+    // shouldn't break the UI.
+    const k = reportKey(r);
+    state.cache.chats[k] = [...state.dialogChat];
+    idbPut('chats', k, state.dialogChat).catch(() => {});
   }
 }
 
@@ -2447,51 +2465,6 @@ function exportSummariesMD() {
   showToast(`Exported ${n} summaries`);
 }
 
-// ── Batch summarise ───────────────────────────────
-async function batchSummarise() {
-  if (state.batch.running) return;
-  if (!isAIUsable()) { showToast('AI not configured'); return; }
-
-  const eligible = state.filtered.filter(r => hasExtractedText(r) && !hasSummary(r));
-  if (!eligible.length) { showToast('No reports need summarising in this filter'); return; }
-
-  const estMins = state.ai.mode === 'local' ? Math.ceil(eligible.length * 0.7) : Math.ceil(eligible.length * 0.5);
-  if (!confirm(`Summarise ${eligible.length} reports? Estimated time: ~${estMins} minute${estMins === 1 ? '' : 's'}. You can stop anytime.`)) return;
-
-  // Close any open report dialog so the batch can hijack state.selectedReport
-  // per iteration without the user seeing the title update mid-loop.
-  closeModal('reportModal');
-
-  state.batch = { running: true, total: eligible.length, done: 0, cancel: false };
-  renderResultsLine();
-
-  for (const r of eligible) {
-    if (state.batch.cancel) break;
-    state.selectedReport = r;
-    try {
-      await generateSummary();   // writes into state.cache.summaries[key]
-    } catch (e) {
-      console.warn('batch summary failed for', reportKey(r), e);
-    }
-    state.batch.done++;
-    renderResultsLine();
-    renderList();
-  }
-
-  state.batch = { running: false, total: 0, done: 0, cancel: false };
-  renderResultsLine();
-  renderList();
-  showToast(`Batch summarise complete`);
-}
-
-function batchSummariseStop() {
-  if (state.batch.running) {
-    state.batch.cancel = true;
-    aiStop();
-    showToast('Stopping after current report…');
-  }
-}
-
 // ── Modal management ──────────────────────────────
 function openModal(id) { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
@@ -2637,13 +2610,9 @@ function attachHandlers() {
     });
   });
 
-  // Toolbar — export + batch summarise
+  // Toolbar — export
   document.getElementById('exportMetaBtn').addEventListener('click', exportMetadataCSV);
   document.getElementById('exportSummariesBtn').addEventListener('click', exportSummariesMD);
-  document.getElementById('batchSummariseBtn').addEventListener('click', () => {
-    if (state.batch?.running) batchSummariseStop();
-    else batchSummarise();
-  });
 
   // Backdrop close
   document.querySelectorAll('.modal-bg').forEach(bg => {
@@ -2678,6 +2647,31 @@ async function loadCachedSummaries() {
       renderList();
     };
   } catch {}
+}
+
+async function loadCachedChats() {
+  // Bulk-hydrate every saved Q&A thread from IDB so opening a previously-
+  // visited report immediately shows its chat history.
+  try {
+    const db = await openIDB();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction('chats', 'readonly');
+      const store = tx.objectStore('chats');
+      const req = store.openCursor();
+      let count = 0;
+      req.onsuccess = (e) => {
+        const c = e.target.result;
+        if (c) {
+          state.cache.chats[c.key] = c.value;
+          count++;
+          c.continue();
+        } else {
+          resolve(count);
+        }
+      };
+      req.onerror = () => reject(req.error);
+    });
+  } catch { return 0; }
 }
 
 async function loadCachedTexts() {
@@ -2717,6 +2711,7 @@ async function loadCachedTexts() {
   renderHeaderStats();
   applyFilters();
   loadCachedSummaries();
+  loadCachedChats();
   // Hydrate any previously-fetched texts from IDB before kicking off the
   // background indexer — so on a return visit we only network-fetch reports
   // the mirror has newly published since last time.

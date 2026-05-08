@@ -234,7 +234,6 @@ img.shot {
     <li><a href="#ask">Asking questions about a report</a></li>
     <li><a href="#search-enrich">Web-search enrichment for Ask</a></li>
     <li><a href="#export">Exporting metadata and summaries</a></li>
-    <li><a href="#batch">Batch-summarising a committee</a></li>
     <li><a href="#privacy">Privacy &amp; what's cached locally</a></li>
     <li><a href="#costs">Costs &amp; limits — what's free, what isn't</a></li>
     <li><a href="#troubleshooting">Troubleshooting</a></li>
@@ -402,17 +401,7 @@ img.shot {
 </ul>
 <p>Both downloads happen client-side — nothing leaves your machine.</p>
 
-<h2 id="batch">10. Batch-summarising a committee</h2>
-<p>The <b>✨ Summarise filtered</b> button runs every report in the current filter that has extracted text but no cached summary. Useful for "summarise everything Defence committee published in LS18".</p>
-<ol class="flow">
-  <li>Filter the list (e.g. Committee = Defence).</li>
-  <li>Click <b>✨ Summarise filtered</b>. The button shows the count of eligible reports and an ETA.</li>
-  <li>Confirm. The dialog closes and the loop runs sequentially. The button updates to <em>"Summarising N/M…"</em>.</li>
-  <li>Click again to stop after the current report. Anything generated so far is saved.</li>
-</ol>
-<div class="callout warn">With local AI, each summary takes 30–90 seconds depending on report length and your GPU. Plan accordingly. With a paid BYOK provider, the cost adds up — see §12.</div>
-
-<h2 id="privacy">11. Privacy &amp; what's cached locally</h2>
+<h2 id="privacy">10. Privacy &amp; what's cached locally</h2>
 <p>SansadLocal has no server. Everything you generate stays in your browser:</p>
 <ul>
   <li><b>API keys</b> — <code>localStorage</code>, never sent except to the provider you chose.</li>
@@ -430,7 +419,7 @@ img.shot {
 </ul>
 <p>What never happens: no analytics, no accounts, no telemetry, no server logs (no server). The page is a static <code>index.html</code> served from GitHub Pages, fronted by Cloudflare for the custom domain.</p>
 
-<h2 id="costs">12. Costs &amp; limits — what's free, what isn't</h2>
+<h2 id="costs">11. Costs &amp; limits — what's free, what isn't</h2>
 <p>Three layers of cost. The first is always free; the other two depend on your choice.</p>
 
 <h3>Layer 1 — SansadLocal infrastructure</h3>
@@ -506,7 +495,7 @@ img.shot {
 
 <div class="callout tip"><b>Recommended free path for most people.</b> Local AI = Gemma 4 E2B (or Ternary Bonsai 1.7B if low on bandwidth) + Tavily for search enrichment. You'll never see a bill.</div>
 
-<h2 id="troubleshooting">13. Troubleshooting</h2>
+<h2 id="troubleshooting">12. Troubleshooting</h2>
 <h3>The local model won't load</h3>
 <ul>
   <li>Check the AI status pill — if it says <em>"No WebGPU"</em>, the browser doesn't support WebGPU. Use Chrome 113+, Edge 113+, Brave, or Firefox 130+.</li>
