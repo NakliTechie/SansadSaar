@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="author" content="Chirag Patnaik">
-<meta name="version" content="0.5.5">
+<meta name="version" content="0.5.6">
 <meta name="description" content="Browse Indian Parliamentary Committee reports with private, on-device AI. No server, no API key required, no data leaving your device.">
 <title>SansadLocal — Parliamentary Committee Reports</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23f5efe2'/%3E%3Cpath d='M6 24h20M8 24V14M12 24V14M16 24V14M20 24V14M24 24V14M5 14h22L16 6z' stroke='%23cc5500' stroke-width='1.6' fill='none' stroke-linejoin='round'/%3E%3C/svg%3E">
@@ -997,7 +997,15 @@ main {
 const VERSION = '0.1.0';
 const DATA_BASE_URL = (() => {
   const u = new URL(window.location.href);
-  return u.searchParams.get('data') || 'https://naklitechie.github.io/parliamentwatch-data/';
+  // Default to Cloudflare Pages mirror (sansad-files.naklitechie.com). Same
+  // files as github.com/NakliTechie/parliamentwatch-data/docs, served from
+  // CF's global edge with custom cache rules in _headers (5-min TTL on
+  // JSONs, 1-year immutable on text/*). Bypasses the GH Pages 100 GB/mo
+  // soft limit (shared across the whole portfolio).
+  // Fallback to GH Pages directly if someone passes ?data=ghpages.
+  const override = u.searchParams.get('data');
+  if (override === 'ghpages') return 'https://naklitechie.github.io/parliamentwatch-data/';
+  return override || 'https://sansad-files.naklitechie.com/';
 })();
 
 // 24 DRSCs — committee key → display name. Mirrors the upstream config but
