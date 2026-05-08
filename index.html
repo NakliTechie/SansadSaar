@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="author" content="Chirag Patnaik">
-<meta name="version" content="0.5.2">
+<meta name="version" content="0.5.3">
 <meta name="description" content="Browse Indian Parliamentary Committee reports with private, on-device AI. No server, no API key required, no data leaving your device.">
 <title>SansadLocal — Parliamentary Committee Reports</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23f5efe2'/%3E%3Cpath d='M6 24h20M8 24V14M12 24V14M16 24V14M20 24V14M24 24V14M5 14h22L16 6z' stroke='%23cc5500' stroke-width='1.6' fill='none' stroke-linejoin='round'/%3E%3C/svg%3E">
@@ -1339,17 +1339,21 @@ async function fetchData(forceRefresh = false) {
   // Fetch from network — best-effort. If we have cached data, surface fetch
   // errors as a toast instead of blocking startup.
   const haveCache = Object.keys(state.data.reports).length > 0;
-  // Use cache: 'no-cache' so the browser always revalidates with the origin
-  // (efficient 304s if unchanged) instead of serving stale HTTP-cached
-  // copies. Cloudflare's edge cache + the page's own IDB cache are still in
-  // play below as offline fallback. Without this flag, after a mirror push
-  // some users see yesterday's manifest until their HTTP cache expires.
+  // Cloudflare caches our data files at the edge with a 10-minute TTL
+  // (max-age=600 from GH Pages). cache:'no-cache' alone wasn't enough —
+  // CF can still return 304 from its stale cache if the etag matches what
+  // the browser holds. Bucket-stamped query string forces CF to treat each
+  // 5-minute window as a fresh URL → first user in the window hits origin,
+  // others in that 5-min slice share the cache. Worst-case staleness drops
+  // from ~10 min to ~5 min, with no extra origin load over time.
+  const bucket = Math.floor(Date.now() / 300000);          // 5-minute window
+  const v = forceRefresh ? `?v=${Date.now()}` : `?v=${bucket}`;
   const fetchOpts = { cache: 'no-cache' };
   try {
     const [reports, manifest, meta] = await Promise.all([
-      fetch(DATA_BASE_URL + 'reports.json',  fetchOpts).then(r => r.ok ? r.json() : Promise.reject(`reports.json: ${r.status}`)),
-      fetch(DATA_BASE_URL + 'manifest.json', fetchOpts).then(r => r.ok ? r.json() : { texts: {} }).catch(() => ({ texts: {} })),
-      fetch(DATA_BASE_URL + 'meta.json',     fetchOpts).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(DATA_BASE_URL + 'reports.json'  + v, fetchOpts).then(r => r.ok ? r.json() : Promise.reject(`reports.json: ${r.status}`)),
+      fetch(DATA_BASE_URL + 'manifest.json' + v, fetchOpts).then(r => r.ok ? r.json() : { texts: {} }).catch(() => ({ texts: {} })),
+      fetch(DATA_BASE_URL + 'meta.json'     + v, fetchOpts).then(r => r.ok ? r.json() : null).catch(() => null),
     ]);
     state.data.reports  = reports;
     state.data.manifest = manifest;
