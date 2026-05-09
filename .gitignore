@@ -6,6 +6,9 @@
 !CNAME
 !guide/
 !guide/**
+!app/
+!app/**
+!persistence.md
 
 # wrangler files
 .wrangler
