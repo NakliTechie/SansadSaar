@@ -671,6 +671,24 @@ main {
 }
 .toast.show { opacity: 1; }
 
+/* ── Search match highlight + match-any toggle ──────────────────── */
+mark {
+  background: var(--accent-bg);
+  color: var(--accent);
+  padding: 0 2px;
+  border-radius: 2px;
+}
+.results-line .match-any-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.78rem;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.results-line .match-any-toggle input { width: auto; }
+
 /* ── Corpus bar (chip switcher + per-corpus status) ──────────────── */
 .corpus-bar {
   display: flex;

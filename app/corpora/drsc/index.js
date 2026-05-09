@@ -102,17 +102,29 @@ const state = {
   // Each entry is {role:'user'|'assistant'|'system'|'error', content}.
   dialogChat: [],
 
-  // Search bundle (v0.6). Single docs/search-bundle.json the mirror
-  // generates on every cron run — title + first N chars per report.
-  // Replaces the per-text-file pre-fetch the SansadLocal "deep search"
-  // toggle used to do (~177 MB → ~3 MB gzipped).
+  // Search bundle (v0.6 part B). docs/search-bundle.json from mirror —
+  // title + first 5K chars per report. Used for substring + snippet preview.
   // Shape: {generated_at, head_chars, total, map: Map<key, {title, head}>}
   searchBundle: null,
   bundleLoading: false,
   bundleLoaded:  false,
 
-  // Deep full-text search — opt-in. ON triggers loadSearchBundle.
+  // Search index (v0.6 part C). docs/search-index.json from mirror —
+  // inverted token index over the full body of every report. Closes the
+  // 95% body-recall gap that bundle alone leaves.
+  // Shape: {generated_at, vocab: [sorted tokens],
+  //         postings: [delta-encoded sorted doc indices],
+  //         report_keys: [...], reportKeyToIdx: Map<key, int>}
+  searchIndex:  null,
+  indexLoading: false,
+  indexLoaded:  false,
+
+  // Deep full-text search — opt-in. ON triggers both bundle + index loads.
   deepSearch: false,
+
+  // Multi-token query semantics. Default AND (every token must hit a doc).
+  // Toggle in the results-line flips to OR (any token wins).
+  matchAny: false,
 
   // Tracks which dialog tab is currently streaming so renders mid-flight
   // can show partial output. {reportKey, tab:'summary'|'chat'} or null.
@@ -276,31 +288,57 @@ function getAllReports() {
 function applyFilters() {
   const all = getAllReports();
   const f = state.filters;
-  const q = f.search.trim().toLowerCase();
+  const rawQ = f.search.trim();
+  const parsedQ = rawQ ? parseQuery(rawQ) : null;
   const bundle = state.searchBundle;
+
+  // Pre-compute one Set<reportKey> per query token for O(1) doc-membership
+  // checks during the filter pass. expandTokenToDocs returns null when the
+  // index isn't loaded — in that case the per-token check falls through to
+  // substring paths (title / head / cached body).
+  const tokenIndexSets = parsedQ
+    ? parsedQ.tokens.map(t => _expandTokenToDocs(t))
+    : [];
+
   const filtered = all.filter(r => {
     if (f.committee && r.committee !== f.committee) return false;
     if (f.ls && String(r.lok_sabha) !== f.ls) return false;
     if (f.category && r._category !== f.category) return false;
-    if (q) {
-      const key = reportKey(r);
-      const hay = (r.title || '').toLowerCase();
-      let hit = hay.includes(q);
-      // Bundle head — cheap O(1) lookup, scans the precomputed first-N-chars
-      // slice. Only consulted when the user has deep search enabled and the
-      // bundle is loaded; falls through to in-memory cached text otherwise.
-      if (!hit && state.deepSearch && bundle) {
-        const e = bundle.map.get(key);
-        if (e && e.head.toLowerCase().includes(q)) hit = true;
-      }
-      // Texts the user has actually opened (cached on demand) still count —
-      // useful for reports without bundle entries (e.g. text added since
-      // last bundle build) and for the body past the bundle's head_chars.
-      if (!hit) {
-        const cachedText = state.cache.text[key];
-        if (cachedText && cachedText.toLowerCase().includes(q)) hit = true;
-      }
+    if (!parsedQ) return true;
+
+    const key = reportKey(r);
+    const titleLower  = (r.title || '').toLowerCase();
+    const bundleEntry = bundle ? bundle.map.get(key) : null;
+    const headLower   = bundleEntry ? bundleEntry.head.toLowerCase() : '';
+    const cached      = state.cache.text[key];
+    const cachedLower = cached ? cached.toLowerCase() : '';
+
+    // tokenHits: index-prefix membership OR substring in title / head / cached.
+    // Substring fallback is critical — keeps "PMAY" / "144" working even when
+    // the index dropped them (numeric / freq cutoff / OCR edge case).
+    function tokenHits(tok, indexSet) {
+      if (indexSet && indexSet.has(key)) return true;
+      if (titleLower.includes(tok)) return true;
+      if (headLower && headLower.includes(tok)) return true;
+      if (cachedLower && cachedLower.includes(tok)) return true;
+      return false;
+    }
+    function phraseHits(phrase) {
+      if (titleLower.includes(phrase)) return true;
+      if (headLower && headLower.includes(phrase)) return true;
+      if (cachedLower && cachedLower.includes(phrase)) return true;
+      return false;
+    }
+
+    if (state.matchAny) {
+      // OR mode: any token or phrase satisfies the query.
+      const hit = parsedQ.tokens.some((t, i) => tokenHits(t, tokenIndexSets[i]))
+              ||  parsedQ.phrases.some(phraseHits);
       if (!hit) return false;
+    } else {
+      // AND mode (default): every token and every phrase must match.
+      if (!parsedQ.tokens.every((t, i) => tokenHits(t, tokenIndexSets[i]))) return false;
+      if (!parsedQ.phrases.every(phraseHits)) return false;
     }
     return true;
   });
@@ -332,11 +370,23 @@ function renderResultsLine() {
 
   let indexLine = '';
   const bundle = state.searchBundle;
+  const idx = state.searchIndex;
   const mirrorWithText = Object.values(state.data.manifest?.texts || {}).reduce((s, c) => s + Object.keys(c).length, 0);
-  if (state.bundleLoading) {
-    indexLine = `<span class="indexing">Loading search bundle…</span>`;
+  const loading = state.bundleLoading || state.indexLoading;
+  if (loading) {
+    const what = state.bundleLoading && state.indexLoading
+      ? 'bundle + index'
+      : state.bundleLoading ? 'bundle' : 'index';
+    indexLine = `<span class="indexing">Loading search ${what}…</span>`;
   } else if (state.deepSearch && state.bundleLoaded && bundle) {
-    indexLine = `<span title="Search hits titles + first ${bundle.head_chars} chars of all extracted reports">Full-text search ready (${bundle.total} reports)</span>`;
+    const idxBit = state.indexLoaded && idx
+      ? ` + ${idx.vocab_size.toLocaleString()} body tokens`
+      : '';
+    const tooltip = idx
+      ? `Search hits titles + first ${bundle.head_chars} chars of every report, plus body-token presence across the corpus.`
+      : `Search hits titles + first ${bundle.head_chars} chars of every report.`;
+    indexLine = `<span title="${escapeHtml(tooltip)}">Full-text search ready · ${bundle.total} reports${idxBit}</span>`
+              + ` · <label class="match-any-toggle"><input type="checkbox" id="matchAnyToggle"${state.matchAny ? ' checked' : ''}>match any</label>`;
   } else if (mirrorWithText === 0) {
     indexLine = '';
   } else {
@@ -345,9 +395,8 @@ function renderResultsLine() {
   el.innerHTML = `Showing <b>${shown}</b> of <b>${total}</b> reports across <b>${Object.keys(state.data.reports).length}</b> committees. ${metaLine} ${indexLine}`;
 
   // "enable deep search" inline link — flips the toggle, persists, kicks
-  // off the bundle fetch. The link copy already names the action; the
-  // estimate (~3 MB) lives in the settings section for users who want
-  // detail before flipping.
+  // off both bundle + index fetches. They run in parallel; the listing
+  // updates as each finishes.
   const enableLink = document.getElementById('enableDeepLink');
   if (enableLink) {
     enableLink.addEventListener('click', (e) => {
@@ -357,10 +406,20 @@ function renderResultsLine() {
       s.deepSearch = true;
       saveSettings(s);
       renderResultsLine();
-      loadSearchBundle().then(() => {
+      Promise.all([loadSearchBundle(), loadSearchIndex()]).then(() => {
         renderResultsLine();
         if (state.filters.search) applyFilters();
       });
+    });
+  }
+  const matchAnyToggle = document.getElementById('matchAnyToggle');
+  if (matchAnyToggle) {
+    matchAnyToggle.addEventListener('change', (e) => {
+      state.matchAny = !!e.target.checked;
+      const s = loadSettings();
+      s.matchAny = state.matchAny;
+      saveSettings(s);
+      applyFilters();
     });
   }
 
@@ -391,16 +450,21 @@ function renderList() {
   }
   // Cap initial render to 200 for perf.
   const slice = state.filtered.slice(0, 200);
+  // Parse query once for highlight (renders match in title with <mark>).
+  const rawQ = state.filters.search.trim();
+  const parsedQ = rawQ ? parseQuery(rawQ) : null;
   list.innerHTML = slice.map(r => {
     const committee = COMMITTEES[r.committee]?.name || r.committee;
     const cat = r._category || 'SUBJ';
     const catLabel = (CATEGORY_PATTERNS.find(p => p.code === cat) || { label: 'Subject' }).label;
     const dateStr = formatDate(r._date);
     const num = r.report_number != null ? `#${escapeHtml(r.report_number)}` : '';
+    const titleHTML = parsedQ ? highlightMatches(r.title || '(untitled report)', parsedQ)
+                              : escapeHtml(r.title || '(untitled report)');
     return `
       <div class="report-row" data-key="${escapeHtml(reportKey(r))}">
         <div>
-          <div class="report-title">${escapeHtml(r.title || '(untitled report)')}</div>
+          <div class="report-title">${titleHTML}</div>
           <div class="report-meta">${escapeHtml(committee)} · LS${escapeHtml(r.lok_sabha || '?')} · ${num}</div>
         </div>
         <span class="house-pill house-${r.house || 'L'}">${r.house === 'R' ? 'RS' : 'LS'}</span>
@@ -782,9 +846,6 @@ async function loadSearchBundle() {
         idbPut('blobs', 'search-bundle.json', fresh).catch(() => {});
       }
     } else if (res.status === 404) {
-      // Mirror hasn't built a bundle yet (early-phase deploy). Fall back
-      // gracefully — user can still title-search; opening reports caches
-      // their text into state.cache.text for body matching.
       console.info('search-bundle.json 404 — mirror has no bundle yet');
     }
   } catch (e) {
@@ -795,6 +856,176 @@ async function loadSearchBundle() {
     if (state.filters.search) applyFilters();
   }
   return state.searchBundle;
+}
+
+// ── Search index (v0.6 part C) ──────────────────────────────────────────────
+//
+// docs/search-index.json: inverted token index over the full body of every
+// report. Pairs with the bundle (which covers snippet preview + first-5K
+// substring). Index uses delta-encoded sorted postings so the wire format
+// gzips ~60% smaller. App reverses the deltas on first use per token.
+
+function _parseIndex(raw) {
+  // Build a Map for fast O(1) reportKey → doc-index lookup. The vocab is
+  // already alphabetically sorted by the mirror — preserve that order so
+  // binary search on prefixes works.
+  const reportKeyToIdx = new Map();
+  for (let i = 0; i < (raw.report_keys || []).length; i++) {
+    reportKeyToIdx.set(raw.report_keys[i], i);
+  }
+  return {
+    version:        raw.version,
+    encoding:       raw.encoding,
+    generated_at:   raw.generated_at,
+    report_count:   raw.report_count,
+    vocab_size:     raw.vocab_size,
+    report_keys:    raw.report_keys || [],
+    vocab:          raw.vocab || [],
+    postings:       raw.postings || [],   // still delta-encoded; decoded lazily per token
+    reportKeyToIdx,
+  };
+}
+
+async function loadSearchIndex() {
+  if (state.indexLoading) return state.searchIndex;
+  state.indexLoading = true;
+  renderResultsLine();
+
+  try {
+    const cached = await idbGet('blobs', 'search-index.json');
+    if (cached) {
+      state.searchIndex = _parseIndex(cached);
+      state.indexLoaded = true;
+      renderResultsLine();
+    }
+  } catch {}
+
+  try {
+    const dataUrl = _deps.config.dataBaseUrl;
+    const bucket  = Math.floor(Date.now() / 300000);
+    const res = await fetch(dataUrl + 'search-index.json?v=' + bucket, { cache: 'no-cache' });
+    if (res.ok) {
+      const fresh = await res.json();
+      const cachedAt = state.searchIndex?.generated_at;
+      if (!cachedAt || (fresh.generated_at && fresh.generated_at > cachedAt)) {
+        state.searchIndex = _parseIndex(fresh);
+        state.indexLoaded = true;
+        idbPut('blobs', 'search-index.json', fresh).catch(() => {});
+      }
+    } else if (res.status === 404) {
+      console.info('search-index.json 404 — mirror has no index yet');
+    }
+  } catch (e) {
+    console.warn('search-index fetch failed', e);
+  } finally {
+    state.indexLoading = false;
+    renderResultsLine();
+    if (state.filters.search) applyFilters();
+  }
+  return state.searchIndex;
+}
+
+// Decoded posting lists are cached per session keyed by vocab index.
+// Saves ~9M cumsums per query rebuild.
+const _decodedPostingsCache = new Map();
+function _decodePostings(vi) {
+  if (_decodedPostingsCache.has(vi)) return _decodedPostingsCache.get(vi);
+  const idx = state.searchIndex;
+  if (!idx || !idx.postings[vi]) return [];
+  const delta = idx.postings[vi];
+  const out = new Array(delta.length);
+  let acc = delta[0] | 0;
+  out[0] = acc;
+  for (let i = 1; i < delta.length; i++) {
+    acc += delta[i] | 0;
+    out[i] = acc;
+  }
+  _decodedPostingsCache.set(vi, out);
+  return out;
+}
+
+// Binary search the lower bound of vocab tokens >= prefix, then scan forward
+// while the prefix still matches. Returns vocab indices.
+function _expandPrefix(prefix) {
+  const idx = state.searchIndex;
+  if (!idx || !idx.vocab.length || !prefix) return [];
+  const vocab = idx.vocab;
+  let lo = 0, hi = vocab.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (vocab[mid] < prefix) lo = mid + 1; else hi = mid;
+  }
+  const out = [];
+  for (let i = lo; i < vocab.length && vocab[i].startsWith(prefix); i++) out.push(i);
+  return out;
+}
+
+// Returns Set<reportKey> of docs containing any token starting with `tokenStr`.
+// Used by applyFilters to precompute index-based hits per query token.
+function _expandTokenToDocs(tokenStr) {
+  const idx = state.searchIndex;
+  if (!idx) return null;   // null = "no index loaded; fall back to substring paths only"
+  const vis = _expandPrefix(tokenStr);
+  if (!vis.length) return new Set();
+  const out = new Set();
+  for (const vi of vis) {
+    for (const docIdx of _decodePostings(vi)) {
+      out.add(idx.report_keys[docIdx]);
+    }
+  }
+  return out;
+}
+
+// ── Query parsing + match + highlight ───────────────────────────────────────
+
+// Parses a raw search string into { tokens, phrases }.
+// Tokens: bare lowercased words (used for prefix index lookup + substring).
+// Phrases: anything inside double quotes (used for literal substring match).
+//   parseQuery(`Mumbai "section 144" PMAY`) → { tokens: ['mumbai','pmay'],
+//                                                phrases: ['section 144'] }
+function parseQuery(raw) {
+  const tokens = [];
+  const phrases = [];
+  let rem = String(raw || '');
+  rem = rem.replace(/"([^"]+)"/g, (_, p) => {
+    const cleaned = p.trim().toLowerCase();
+    if (cleaned) phrases.push(cleaned);
+    return ' ';
+  });
+  for (const word of rem.split(/\s+/)) {
+    const w = word.toLowerCase().replace(/^[\W_]+|[\W_]+$/g, '');
+    if (w) tokens.push(w);
+  }
+  return { tokens, phrases };
+}
+
+function _escapeRegex(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Builds an HTML fragment with <mark> wrapping any match of the parsed query
+// in `text`, and HTML-escaping everything else. Tokens highlight as
+// whole-word matches (`drone` highlights `drones`); phrases highlight literal.
+// Phrases sort longer-first so they take precedence in the alternation.
+function highlightMatches(text, parsedQ) {
+  const safeText = String(text ?? '');
+  if (!parsedQ) return escapeHtml(safeText);
+  const tokens = parsedQ.tokens.filter(Boolean);
+  const phrases = parsedQ.phrases.filter(Boolean);
+  if (!tokens.length && !phrases.length) return escapeHtml(safeText);
+  const phrasePats = [...phrases].sort((a, b) => b.length - a.length).map(_escapeRegex);
+  const tokenPats  = tokens.map(t => `\\b${_escapeRegex(t)}\\w*`);
+  let pattern;
+  try {
+    pattern = new RegExp('(' + [...phrasePats, ...tokenPats].join('|') + ')', 'gi');
+  } catch {
+    return escapeHtml(safeText);
+  }
+  const parts = safeText.split(pattern);
+  return parts.map((part, i) => (i % 2 === 1)
+    ? `<mark>${escapeHtml(part)}</mark>`
+    : escapeHtml(part)
+  ).join('');
 }
 
 // ── Export ──────────────────────────────────────────────────────────────────
@@ -985,20 +1216,26 @@ function renderSettingsSection(container) {
   const manifestEntries = Object.values(state.data.manifest?.texts || {}).reduce((s, c) => s + Object.keys(c).length, 0);
   const bundleStats = meta?.search_bundle;   // {total, head_chars, size_bytes, truncated} or null
 
+  // Two-file estimate: search-bundle (snippet + first 5K chars per report)
+  // + search-index (token presence across full body). Both cache in IDB.
+  const indexStats = meta?.search_index;
   let estimateLine;
-  if (state.bundleLoaded && bundle) {
-    estimateLine = `Search bundle loaded: ${bundle.total} reports, head ${bundle.head_chars} chars per report. Cached locally — no new bandwidth.`;
-  } else if (bundleStats?.size_bytes) {
-    const mb = (bundleStats.size_bytes / (1024 * 1024)).toFixed(1);
-    estimateLine = `Single ~${mb} MB download (CF gzip serves ~30%, cached locally after). Searches the first ${bundleStats.head_chars} chars of all ${bundleStats.total} extracted reports.`;
+  if (state.bundleLoaded && state.indexLoaded && bundle && state.searchIndex) {
+    estimateLine = `Search bundle + body index loaded: ${bundle.total} reports, ${state.searchIndex.vocab_size.toLocaleString()} tokens indexed. Cached locally — no new bandwidth.`;
+  } else if (state.bundleLoaded && bundle) {
+    estimateLine = `Bundle loaded (${bundle.total} reports). Body index will load next; substring + first-5K-chars search active now.`;
+  } else if (bundleStats?.size_bytes && indexStats?.size_bytes) {
+    const totalMB = ((bundleStats.size_bytes + indexStats.size_bytes) / (1024 * 1024)).toFixed(1);
+    estimateLine = `~${totalMB} MB total (CF gzip serves ~30%, cached locally after). Bundle covers titles + first ${bundleStats.head_chars} chars; body index covers token presence across the full corpus.`;
   } else {
-    estimateLine = `Single ~3 MB download (cached locally after). Searches the first 5,000 chars of every extracted report.`;
+    estimateLine = `Single download per file, cached locally after. Bundle covers first 5,000 chars per report; body index covers token presence across the full body.`;
   }
 
   container.innerHTML = `
     <div class="settings-section">
       <h3>Search (Standing Committees)</h3>
-      <p>By default, search matches report titles plus any reports you've already opened. Enable deep search to fetch a single bundle (title + head text per report) and search across all of them.</p>
+      <p>By default, search matches report titles plus any reports you've already opened. Enable deep search to fetch the search bundle (title + first 5K chars per report) and the body index (token presence across the full body) — both cached locally after first load.</p>
+      <p style="font-size:0.82rem; color:var(--muted); margin-bottom:6px;">Tip: wrap a phrase in double quotes (<code>"section 144"</code>) for an exact-substring match. Toggle "match any" in the results line to switch from AND to OR semantics across multiple words.</p>
       <div class="settings-row">
         <label for="deepSearch">Deep search</label>
         <div>
@@ -1041,7 +1278,10 @@ function applySettingsFromUI() {
   const s = loadSettings();
   s.deepSearch = state.deepSearch;
   saveSettings(s);
-  if (state.deepSearch && !wasDeep) loadSearchBundle();
+  if (state.deepSearch && !wasDeep) {
+    loadSearchBundle();
+    loadSearchIndex();
+  }
 }
 
 // ── Activation / lifecycle ──────────────────────────────────────────────────
@@ -1051,6 +1291,7 @@ async function activate(deps) {
   // Load DRSC-specific settings slice.
   const settings = loadSettings();
   state.deepSearch = !!settings.deepSearch;
+  state.matchAny   = !!settings.matchAny;
 
   attachHandlers();
 
@@ -1067,9 +1308,13 @@ async function activate(deps) {
       renderList();
       renderResultsLine();
     }
-    // Light up the bundle if the user has deep search on. IDB cache hits
-    // first, network fetches a newer bundle in the background.
-    if (state.deepSearch) loadSearchBundle();
+    // Light up the bundle + index if the user has deep search on. IDB
+    // cache hits first per file, network fetches newer copies in the
+    // background. They run in parallel.
+    if (state.deepSearch) {
+      loadSearchBundle();
+      loadSearchIndex();
+    }
   });
 
   return true;
@@ -1102,27 +1347,41 @@ const api = {
   get(key) {
     return getAllReports().find(r => reportKey(r) === key) || null;
   },
-  // Substring search across titles + bundle heads + cached texts.
-  // opts.deep (bool) — if true, ensures the search bundle is loaded so
-  // body-text matches across the corpus head_chars are included.
+  // Mirrors the app-bar search semantics: parses tokens + quoted phrases,
+  // applies AND-by-default (or OR via opts.any), uses bundle + index when
+  // loaded for body recall, falls back to substring on title / head /
+  // cached body. opts.deep — if true, kicks off bundle + index load (and
+  // awaits) so the search reflects full corpus, not just title hits.
   async search(query, opts = {}) {
-    const q = String(query || '').toLowerCase();
-    if (opts.deep && !state.bundleLoaded) {
+    if (opts.deep && (!state.bundleLoaded || !state.indexLoaded)) {
       state.deepSearch = true;
-      await loadSearchBundle();
+      await Promise.all([loadSearchBundle(), loadSearchIndex()]);
     }
+    const parsedQ = parseQuery(query);
+    if (!parsedQ.tokens.length && !parsedQ.phrases.length) return getAllReports();
     const bundle = state.searchBundle;
+    const tokenIndexSets = parsedQ.tokens.map(t => _expandTokenToDocs(t));
+    const anyMode = !!opts.any;
     return getAllReports().filter(r => {
       const key = reportKey(r);
-      const hay = (r.title || '').toLowerCase();
-      if (hay.includes(q)) return true;
-      if (bundle) {
-        const e = bundle.map.get(key);
-        if (e && e.head.toLowerCase().includes(q)) return true;
+      const titleLower = (r.title || '').toLowerCase();
+      const bundleEntry = bundle ? bundle.map.get(key) : null;
+      const headLower = bundleEntry ? bundleEntry.head.toLowerCase() : '';
+      const cached = state.cache.text[key];
+      const cachedLower = cached ? cached.toLowerCase() : '';
+      const tokHit = (t, idxSet) => (idxSet && idxSet.has(key))
+        || titleLower.includes(t)
+        || (headLower && headLower.includes(t))
+        || (cachedLower && cachedLower.includes(t));
+      const phHit = p => titleLower.includes(p)
+        || (headLower && headLower.includes(p))
+        || (cachedLower && cachedLower.includes(p));
+      if (anyMode) {
+        return parsedQ.tokens.some((t, i) => tokHit(t, tokenIndexSets[i]))
+            || parsedQ.phrases.some(phHit);
       }
-      const cachedText = state.cache.text[key];
-      if (cachedText && cachedText.toLowerCase().includes(q)) return true;
-      return false;
+      return parsedQ.tokens.every((t, i) => tokHit(t, tokenIndexSets[i]))
+          && parsedQ.phrases.every(phHit);
     });
   },
   // Programmatically open a report dialog. Returns true if found.
