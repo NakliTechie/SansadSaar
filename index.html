@@ -208,19 +208,28 @@ main {
 }
 
 /* ── Filter row ─────────────────────────────────── */
+/* Flex-wrap (not fixed-column grid) so the row grows with the corpus's
+   filter count instead of wrapping the X / sort dropdown into a second
+   row at a stretched grid-template width. DRSC has 6 controls, CAG has
+   7, Bills has 8 — fixed-column grid couldn't fit all three cleanly,
+   and the X landed in a stretched cell whenever it wrapped. */
 .filters {
-  display: grid;
-  grid-template-columns: 2fr 1fr 1fr 1fr 1fr auto;
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 12px;
+  align-items: center;
 }
-.filters input, .filters select {
-  width: 100%;
+.filters > input,
+.filters > select {
+  flex: 1 1 140px;
+  min-width: 0;
 }
-@media (max-width: 900px) {
-  .filters {
-    grid-template-columns: 1fr 1fr;
-  }
+.filters > input[type="search"] {
+  flex: 2 1 240px;
+}
+.filters > button {
+  flex: 0 0 auto;
 }
 
 .results-line {
@@ -285,9 +294,8 @@ main {
     flex: 1 1 100%;
     margin-bottom: 2px;
   }
-  .filters {
-    grid-template-columns: 1fr;
-  }
+  /* .filters: no override needed — it's already flex-wrap and handles narrow
+     viewports naturally via flex-basis. */
 }
 .report-title {
   font-weight: 500;
