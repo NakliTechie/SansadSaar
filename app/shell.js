@@ -876,6 +876,14 @@ const deps = {
     debounce,
   },
 
+  // Which corpus is currently active in the shell. Each corpus uses this
+  // to guard handlers on shared DOM (most notably the report-dialog
+  // tab buttons): every corpus binds its own click listener at activate
+  // time, so without the guard a click would fan out to all corpora and
+  // the last-to-fire would stomp the active corpus's render. Each
+  // corpus's switchReportTab early-returns if `deps.activeCorpus() !== <id>`.
+  activeCorpus: () => activeCorpusId,
+
   broadcast,
   onBroadcast,
 };

@@ -536,6 +536,13 @@ async function loadTextTab() {
 }
 
 function switchReportTab(name) {
+  // Multi-corpus guard — every corpus binds a click listener on the
+  // shared #reportModal .tab-btn elements at activate time, so clicks
+  // fan out to all corpora. Only the active corpus should respond;
+  // the others must bail before they mutate the dialog. Without this
+  // guard, the last-to-fire wins and wipes the active corpus's
+  // rendered tab. See CONV.md "Multi-corpus shared-DOM guard".
+  if (_deps.activeCorpus?.() !== 'cag') return;
   document.querySelectorAll('#reportModal .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
   document.querySelectorAll('#reportModal .tab-pane').forEach(p => p.classList.remove('active'));
   document.getElementById(name + 'Tab').classList.add('active');

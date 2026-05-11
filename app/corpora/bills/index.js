@@ -596,6 +596,10 @@ async function loadTextTab() {
 }
 
 function switchReportTab(name) {
+  // Multi-corpus guard — bail if Bills isn't the active corpus, otherwise
+  // we'd stomp another corpus's rendered tab. See CONV.md "Multi-corpus
+  // shared-DOM guard".
+  if (_deps.activeCorpus?.() !== 'bills') return;
   document.querySelectorAll('#reportModal .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
   document.querySelectorAll('#reportModal .tab-pane').forEach(p => p.classList.remove('active'));
   document.getElementById(name + 'Tab').classList.add('active');
