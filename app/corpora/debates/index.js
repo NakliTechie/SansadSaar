@@ -107,6 +107,11 @@ const state = {
   deepSearch: false,
   matchAny:   false,
 
+  // RS only — which version is showing in the Full text tab. Defaults
+  // to 'floor' (canonical) but the user can switch via the picker.
+  // Reset on each report-open.
+  rsSelectedVersion: 'floor',
+
   streamingContext: null,
 };
 
@@ -117,14 +122,29 @@ let _activated = false;
 
 function reportKey(r) {
   if (r.house === 'ls') return `debates|ls|${r.lok_sabha}|${r.session}|${r.db_slno}`;
-  if (r.house === 'rs') return `debates|rs|${r.session}|${r.date}`;
+  // RS uses ISO date (yyyy-mm-dd) for stable sortability.
+  if (r.house === 'rs') return `debates|rs|${r.session}|${r.date_iso || r.date}`;
   return `debates|?|${r.lok_sabha || '?'}|${r.session || '?'}|${r.db_slno || r.date || '?'}`;
 }
 
-function fileId(r) {
+// LS records have one file_id. RS records have multiple (one per version
+// in file_versions). `fileId(r, version='floor')` returns the per-version
+// id for RS; for LS the version arg is ignored.
+function fileId(r, version = 'floor') {
   if (r.house === 'ls') return `LS${r.lok_sabha}_S${r.session}_${r.db_slno}`;
-  if (r.house === 'rs') return `RS${r.session}_${(r.date || '').replace(/\//g, '-')}`;
+  if (r.house === 'rs') {
+    const iso = r.date_iso || (r.date || '').split('/').reverse().join('-');
+    return `RS${r.session}_${iso}_${version}`;
+  }
   return '';
+}
+
+// RS-only: which versions are actually extracted and available?
+function rsAvailableVersions(r) {
+  if (r.house !== 'rs') return [];
+  const byVer = state.data.manifest?.texts?.rs?.[`RS${r.session}_${r.date_iso || (r.date || '').split('/').reverse().join('-')}`] || {};
+  // Order: floor → english → part1 (canonical, then EN translation, then Q&A subset)
+  return ['floor', 'english', 'part1'].filter(v => byVer[v]);
 }
 
 function parseDate(s) {
@@ -212,35 +232,48 @@ async function fetchData(forceRefresh = false) {
   return true;
 }
 
-async function fetchReportText(report) {
-  const key = reportKey(report);
-  if (state.cache.text[key]) return state.cache.text[key];
+// RS records have multi-version text. `version` is 'floor' (default),
+// 'english', or 'part1' — ignored for LS. Cache key is per-version so
+// switching versions on the same record doesn't smash cache.
+async function fetchReportText(report, version = 'floor') {
+  const baseKey = reportKey(report);
+  // LS: single body. RS: one cache entry per version.
+  const cacheKey = report.house === 'rs' ? `${baseKey}#${version}` : baseKey;
+  if (state.cache.text[cacheKey]) return state.cache.text[cacheKey];
 
   try {
-    const cached = await idbGet('texts', key);
+    const cached = await idbGet('texts', cacheKey);
     if (cached) {
-      state.cache.text[key] = cached;
+      state.cache.text[cacheKey] = cached;
       return cached;
     }
   } catch {}
 
-  const fid = fileId(report);
-  const entry = state.data.manifest?.texts?.[report.house]?.[fid];
+  // Resolve the manifest entry. For LS, manifest.texts.ls[<file_id>] is
+  // a flat {size,url}. For RS, manifest.texts.rs[<base_id>] is a dict
+  // keyed by version: {floor:{size,url}, english:{...}, part1:{...}}.
+  let entry;
+  if (report.house === 'ls') {
+    entry = state.data.manifest?.texts?.ls?.[fileId(report)];
+  } else if (report.house === 'rs') {
+    const base = fileId(report, 'floor').replace(/_floor$/, '');
+    entry = state.data.manifest?.texts?.rs?.[base]?.[version];
+  }
   if (!entry) return null;
   try {
     const res = await fetch(_deps.config.dataBaseUrl + CORPUS_PREFIX + entry.url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const text = await res.text();
-    state.cache.text[key] = text;
-    idbPut('texts', key, text).catch(() => {});
+    state.cache.text[cacheKey] = text;
+    idbPut('texts', cacheKey, text).catch(() => {});
     _deps.disk?.write?.('debates', entry.url, text).catch(() => {});
     return text;
   } catch (e) {
     try {
       const fromDisk = await _deps.disk?.read?.('debates', entry.url);
       if (fromDisk) {
-        state.cache.text[key] = fromDisk;
-        idbPut('texts', key, fromDisk).catch(() => {});
+        state.cache.text[cacheKey] = fromDisk;
+        idbPut('texts', cacheKey, fromDisk).catch(() => {});
         return fromDisk;
       }
     } catch {}
@@ -400,8 +433,16 @@ function renderResultsLine() {
 }
 
 function hasExtractedText(r) {
-  const fid = fileId(r);
-  return !!state.data.manifest?.texts?.[r.house]?.[fid];
+  if (r.house === 'ls') {
+    return !!state.data.manifest?.texts?.ls?.[fileId(r)];
+  }
+  if (r.house === 'rs') {
+    // Any extracted version counts. The detail panel surfaces all
+    // available versions; the user can pick. Floor is preferred order
+    // but absence of Floor doesn't disqualify the record.
+    return rsAvailableVersions(r).length > 0;
+  }
+  return false;
 }
 function hasSummary(r) {
   return !!state.cache.summaries[reportKey(r)];
@@ -529,6 +570,14 @@ function openReportByKey(key) {
   }
   state.selectedReport = r;
   state.dialogChat = state.cache.chats[key] ? [...state.cache.chats[key]] : [];
+  // RS records: default to whichever version is available, preferring Floor.
+  // LS records: ignored.
+  if (r.house === 'rs') {
+    const avail = rsAvailableVersions(r);
+    state.rsSelectedVersion = avail[0] || 'floor';
+  } else {
+    state.rsSelectedVersion = 'floor';
+  }
   document.getElementById('reportTitle').textContent = r.title || '(untitled)';
   renderDetailsTab(r);
   switchReportTab('details');
@@ -593,6 +642,13 @@ function _devanagariRatio(text) {
   return total === 0 ? 0 : hindi / total;
 }
 
+// Version-label map for the RS picker.
+const RS_VERSION_LABELS = {
+  floor:   { short: 'Floor',        long: 'Floor (canonical, mixed-language as delivered)' },
+  english: { short: 'English',      long: 'English version (upstream translation)' },
+  part1:   { short: 'Part-1 (Q&A)', long: 'Part-1: Questions and Answers' },
+};
+
 async function loadTextTab() {
   const r = state.selectedReport;
   const tab = document.getElementById('textTab');
@@ -602,8 +658,31 @@ async function loadTextTab() {
     return;
   }
   tab.innerHTML = `<p style="color:var(--muted)">Loading…</p>`;
-  const text = await fetchReportText(r);
-  if (!text) { tab.innerHTML = `<p>Could not load the extracted text.</p>`; return; }
+
+  // RS records: render a small version picker above the body. LS
+  // records have only one body, so no picker.
+  let pickerHTML = '';
+  let version = 'floor';
+  if (r.house === 'rs') {
+    const avail = rsAvailableVersions(r);
+    if (!avail.includes(state.rsSelectedVersion)) {
+      state.rsSelectedVersion = avail[0] || 'floor';
+    }
+    version = state.rsSelectedVersion;
+    if (avail.length > 1) {
+      const buttons = avail.map(v => {
+        const lbl = RS_VERSION_LABELS[v] || { short: v, long: v };
+        const active = v === version ? ' active' : '';
+        return `<button class="version-pick${active}" data-version="${v}" title="${escapeHtml(lbl.long)}" style="padding:4px 10px; margin-right:6px; border-radius:4px; border:1px solid var(--border); background:${v === version ? 'var(--accent-bg)' : 'transparent'}; color:${v === version ? 'var(--accent)' : 'var(--text)'}; cursor:pointer; font-size:0.85rem">${escapeHtml(lbl.short)}</button>`;
+      }).join('');
+      pickerHTML = `<div class="version-picker" style="margin-bottom:12px; font-size:0.86rem; color:var(--muted)">
+        <span style="margin-right:8px">Version:</span>${buttons}
+      </div>`;
+    }
+  }
+
+  const text = await fetchReportText(r, version);
+  if (!text) { tab.innerHTML = pickerHTML + `<p>Could not load the extracted text for this version.</p>`; return; }
 
   // Surface a hint when the debate is meaningfully Hindi. Single
   // threshold at 30% — below that the speech is mostly English (with
@@ -620,7 +699,17 @@ async function loadTextTab() {
       <b>Summary</b> or <b>Ask</b> tab.
     </div>`;
   }
-  tab.innerHTML = hint + `<pre>${escapeHtml(text)}</pre>`;
+  tab.innerHTML = pickerHTML + hint + `<pre>${escapeHtml(text)}</pre>`;
+
+  // Wire the version-picker buttons. Re-render the tab on switch.
+  if (r.house === 'rs') {
+    tab.querySelectorAll('.version-pick').forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.rsSelectedVersion = btn.dataset.version;
+        loadTextTab();
+      });
+    });
+  }
   renderList();
 }
 
@@ -733,7 +822,10 @@ function _truncateForContext(text) {
 async function generateSummary() {
   const r = state.selectedReport;
   if (!r) return;
-  const text = await fetchReportText(r);
+  // For RS records, default Summary / Ask to operate on whichever
+  // version is currently displayed (state.rsSelectedVersion). LS
+  // records ignore the version arg.
+  const text = await fetchReportText(r, state.rsSelectedVersion);
   if (!text) {
     _deps.ui.toast('Debate text not available — extract pending');
     return;
@@ -783,7 +875,10 @@ async function chatSend(opts) {
   const q = input.value.trim();
   if (!q) return;
   if (_deps.ai.streaming()) { _deps.ui.toast('Already responding…'); return; }
-  const text = await fetchReportText(r);
+  // For RS records, default Summary / Ask to operate on whichever
+  // version is currently displayed (state.rsSelectedVersion). LS
+  // records ignore the version arg.
+  const text = await fetchReportText(r, state.rsSelectedVersion);
   if (!text) { _deps.ui.toast('Debate text not available'); return; }
 
   const k = reportKey(r);
