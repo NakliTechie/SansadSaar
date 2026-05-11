@@ -537,9 +537,12 @@ function openReportByKey(key) {
 
 function renderDetailsTab(r) {
   const house = HOUSES[r.house] || { long: '?' };
-  // Reconstruct upstream view URL — sansad.in's view-debate route
+  // Reconstruct upstream view URL — sansad.in's view-debate route.
+  // The PAGE uses lowercased/abbreviated params (?ls=&session=&dbslno=),
+  // distinct from the API which uses ?loksabha=&sessionNumber=&dbSlNo=.
+  // Caught after first ship when source links returned "Invalid arguments".
   const upstreamUrl = r.house === 'ls'
-    ? `https://sansad.in/ls/debates/view-debate?loksabha=${r.lok_sabha}&sessionNumber=${r.session}&dbSlNo=${r.db_slno}`
+    ? `https://sansad.in/ls/debates/view-debate?ls=${r.lok_sabha}&session=${r.session}&dbslno=${r.db_slno}`
     : `https://sansad.in/rs/debates/verbatim`;
 
   let membersHTML = '';
