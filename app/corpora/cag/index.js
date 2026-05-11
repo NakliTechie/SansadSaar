@@ -18,6 +18,7 @@ import {
   escapeHtml, debounce,
   loadSettings, saveSettings,
 } from '../../deps.js';
+import { streamWithPersistence } from '../../ai-streaming.js';
 
 const CORPUS_PREFIX = 'cag/';
 
@@ -653,45 +654,31 @@ async function generateSummary() {
     { role: 'user',   content: prompt },
   ];
 
-  // Track partial output in a local `inflight` rather than mutating
-  // state.cache.summaries[key] in place. This decouples in-flight UI
-  // updates from the committed cache, so:
-  //   • Regenerate failure → old good summary stays visible
-  //     (Bug 2 from the persistence audit).
-  //   • Mid-stream error WITH substantive partial → we commit the
-  //     partial + error suffix to IDB so it survives reload
-  //     (Bug 1).
-  //   • Mid-stream error BEFORE any tokens → preserve old cached;
-  //     don't replace good data with an error string.
+  // Stream via the shared helper — owns the inflight buffer + commit
+  // decision. We just supply the live-DOM hook and persist on the
+  // decision the helper returns. See app/ai-streaming.js + CONV.md
+  // "Streaming AI persistence pattern".
   const previousCached = state.cache.summaries[key] || '';
-  let inflight = '';
   state.streamingContext = { reportKey: key, tab: 'summary' };
-  // Render once to flip the tab into streaming mode (Stop button etc).
-  // We don't wipe state.cache.summaries[key] anymore — renderSummaryTab
-  // reads `inflight` via the live DOM update path during streaming.
   renderSummaryTab();
   try {
-    await _deps.ai.generate(messages, (tok) => {
-      inflight += tok;
-      if (state.streamingContext?.reportKey === key) {
-        const box = document.getElementById('summaryBox');
-        if (box) box.textContent = inflight;
-      }
+    const result = await streamWithPersistence({
+      generate: _deps.ai.generate,
+      messages,
+      onText: (full) => {
+        if (state.streamingContext?.reportKey === key) {
+          const box = document.getElementById('summaryBox');
+          if (box) box.textContent = full;
+        }
+      },
     });
-    // Success path — commit.
-    state.cache.summaries[key] = inflight;
-    idbPut('summaries', key, inflight).catch(() => {});
-  } catch (e) {
-    if (inflight.length > 100) {
-      // Substantive partial — keep it, with an error suffix so the user
-      // knows it's incomplete. Persists to IDB so it survives reload.
-      const final = inflight + '\n\n[Error: ' + e.message + ']';
-      state.cache.summaries[key] = final;
-      idbPut('summaries', key, final).catch(() => {});
+    if (result.ok) {
+      state.cache.summaries[key] = result.text;
+      idbPut('summaries', key, result.text).catch(() => {});
     } else {
-      // Immediate-fail — preserve whatever was there before.
+      // Immediate-fail — preserve previous cached, surface the error.
       state.cache.summaries[key] = previousCached;
-      _deps.ui.toast('Summary generation failed: ' + e.message);
+      _deps.ui.toast('Summary generation failed: ' + result.error.message);
     }
   } finally {
     state.streamingContext = null;
@@ -755,21 +742,26 @@ async function chatSend(opts) {
       { role: 'system', content: 'You answer questions about audit reports from the Comptroller and Auditor General of India. Use only the supplied material. If the answer is not present, say so.' },
       { role: 'user',   content: userPrompt },
     ];
-    try {
-      await _deps.ai.generate(messages, (tok) => {
+    const result = await streamWithPersistence({
+      generate: _deps.ai.generate,
+      messages,
+      onText: (full) => {
         const last = state.dialogChat[state.dialogChat.length - 1];
-        last.content += tok;
+        last.content = full;   // helper passes cumulative
         const lastEl = document.querySelector('#chatThread .chat-msg.assistant:last-child');
         if (lastEl) {
-          lastEl.textContent = last.content;
+          lastEl.textContent = full;
           const t = document.getElementById('chatThread');
           if (t) t.scrollTop = t.scrollHeight;
         }
-      });
-    } catch (e) {
-      const last = state.dialogChat[state.dialogChat.length - 1];
+      },
+    });
+    const last = state.dialogChat[state.dialogChat.length - 1];
+    if (result.ok) {
+      last.content = result.text;   // success or substantive partial
+    } else {
       last.error = true;
-      last.content = 'Error: ' + e.message;
+      last.content = 'Error: ' + result.error.message;
     }
   } finally {
     state.streamingContext = null;

@@ -13,6 +13,7 @@ import {
   escapeHtml, debounce,
   loadSettings, saveSettings,
 } from '../../deps.js';
+import { streamWithPersistence } from '../../ai-streaming.js';
 
 // All corpus data lives under `<dataBaseUrl>/<CORPUS_PREFIX>/...` after
 // v1.0a phase 2. The mirror moved DRSC's files into docs/drsc/ on the
@@ -702,34 +703,28 @@ async function generateSummary() {
     { role: 'user',   content: prompt },
   ];
 
-  // Track partial output in a local `inflight` rather than mutating
-  // state.cache.summaries[key]. Decouples in-flight UI from the
-  // committed cache: regenerate failure keeps old summary; substantive
-  // partial errors persist; empty errors leave the cache alone.
-  // See CONV.md "Streaming AI persistence pattern".
+  // Stream via the shared helper. See app/ai-streaming.js + CONV.md
+  // "Streaming AI persistence pattern".
   const previousCached = state.cache.summaries[key] || '';
-  let inflight = '';
   state.streamingContext = { reportKey: key, tab: 'summary' };
   renderSummaryTab();
-
   try {
-    await _deps.ai.generate(messages, (tok) => {
-      inflight += tok;
-      if (state.streamingContext?.reportKey === key) {
-        const box = document.getElementById('summaryBox');
-        if (box) box.textContent = inflight;
-      }
+    const result = await streamWithPersistence({
+      generate: _deps.ai.generate,
+      messages,
+      onText: (full) => {
+        if (state.streamingContext?.reportKey === key) {
+          const box = document.getElementById('summaryBox');
+          if (box) box.textContent = full;
+        }
+      },
     });
-    state.cache.summaries[key] = inflight;
-    idbPut('summaries', key, inflight).catch(() => {});
-  } catch (e) {
-    if (inflight.length > 100) {
-      const final = inflight + '\n\n[Error: ' + e.message + ']';
-      state.cache.summaries[key] = final;
-      idbPut('summaries', key, final).catch(() => {});
+    if (result.ok) {
+      state.cache.summaries[key] = result.text;
+      idbPut('summaries', key, result.text).catch(() => {});
     } else {
       state.cache.summaries[key] = previousCached;
-      _deps.ui.toast('Summary generation failed: ' + e.message);
+      _deps.ui.toast('Summary generation failed: ' + result.error.message);
     }
   } finally {
     state.streamingContext = null;
@@ -796,21 +791,26 @@ async function chatSend(opts) {
       { role: 'user',   content: userPrompt },
     ];
 
-    try {
-      await _deps.ai.generate(messages, (tok) => {
+    const result = await streamWithPersistence({
+      generate: _deps.ai.generate,
+      messages,
+      onText: (full) => {
         const last = state.dialogChat[state.dialogChat.length - 1];
-        last.content += tok;
+        last.content = full;
         const lastEl = document.querySelector('#chatThread .chat-msg.assistant:last-child');
         if (lastEl) {
-          lastEl.textContent = last.content;
+          lastEl.textContent = full;
           const t = document.getElementById('chatThread');
           if (t) t.scrollTop = t.scrollHeight;
         }
-      });
-    } catch (e) {
-      const last = state.dialogChat[state.dialogChat.length - 1];
+      },
+    });
+    const last = state.dialogChat[state.dialogChat.length - 1];
+    if (result.ok) {
+      last.content = result.text;
+    } else {
       last.error = true;
-      last.content = 'Error: ' + e.message;
+      last.content = 'Error: ' + result.error.message;
     }
   } finally {
     state.streamingContext = null;
