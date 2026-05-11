@@ -18,6 +18,10 @@ import {
 import { DRSCCorpus }  from './corpora/drsc/index.js';
 import { CAGCorpus }   from './corpora/cag/index.js';
 import { BillsCorpus } from './corpora/bills/index.js';
+import {
+  initDiskSync, getDiskSyncState, onDiskSyncChange,
+  connectAndSync, reconnect, syncNow,
+} from './disk-sync.js';
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -618,6 +622,87 @@ function bindAINotReadyCTA(container) {
   });
 }
 
+// ── "Save to Disk" pill (File System Access API) ────────────────────────────
+//
+// State machine + DOM live in app/disk-sync.js; shell just renders the pill
+// and dispatches clicks based on the current state. Browsers without FSA
+// (Safari, Firefox, iOS) see no pill at all — the rest of the app is
+// unaffected.
+
+function refreshDiskPill() {
+  const pill = document.getElementById('diskPill');
+  const txt  = document.getElementById('diskPillText');
+  if (!pill || !txt) return;
+  const { state, supported, syncing, lastSyncAt } = getDiskSyncState();
+
+  if (!supported) {
+    pill.hidden = true;
+    return;
+  }
+  pill.hidden = false;
+  pill.classList.remove('connected', 'reconnect', 'syncing');
+
+  if (syncing) {
+    pill.classList.add('syncing');
+    txt.textContent = 'Syncing…';
+    pill.disabled = true;
+    return;
+  }
+  pill.disabled = false;
+
+  if (state === 'connected') {
+    pill.classList.add('connected');
+    const age = lastSyncAt ? relativeTime(new Date(lastSyncAt).toISOString()) : 'just now';
+    txt.textContent = lastSyncAt ? `Synced • ${age}` : 'Synced';
+    pill.title = 'Click to re-sync the index from the mirror to your folder';
+  } else if (state === 'reconnect-needed') {
+    pill.classList.add('reconnect');
+    txt.textContent = 'Reconnect to Disk';
+    pill.title = 'Browser dropped permission to your saved folder — click to re-grant';
+  } else {
+    txt.textContent = 'Save to Disk';
+    pill.title = 'Save the index to a folder you control (Tier A: meta + reports + bundle + index, ~60 MB total)';
+  }
+}
+
+async function onDiskPillClick() {
+  const { state, supported, syncing } = getDiskSyncState();
+  if (!supported || syncing) return;
+  const onProgress = (path) => {
+    const txt = document.getElementById('diskPillText');
+    if (txt) txt.textContent = 'Syncing… ' + path;
+  };
+  try {
+    if (state === 'unsaved') {
+      toast('Pick a folder — we\'ll write the index there now and reconnect on each visit');
+      await connectAndSync(onProgress);
+      toast('Saved. Folder is now your portable mirror of SansadSaar.');
+    } else if (state === 'reconnect-needed') {
+      await reconnect();
+      const after = getDiskSyncState();
+      if (after.state === 'connected') {
+        toast('Reconnected. Syncing fresh data…');
+        await syncNow(onProgress);
+        toast('Synced.');
+      } else {
+        toast('Permission not granted — try again or pick a new folder');
+      }
+    } else if (state === 'connected') {
+      toast('Re-syncing from the mirror…');
+      await syncNow(onProgress);
+      toast('Synced.');
+    }
+  } catch (e) {
+    // AbortError is the user dismissing the directory picker — silent.
+    if (e?.name !== 'AbortError') {
+      console.warn('[disk-sync] click handler error', e);
+      toast('Disk sync failed: ' + e.message);
+    }
+  } finally {
+    refreshDiskPill();
+  }
+}
+
 // ── Web search providers ────────────────────────────────────────────────────
 
 function isSearchConfigured() {
@@ -996,6 +1081,13 @@ async function init() {
   attachShellHandlers();
   buildJSAPI();
   refreshAIPill();
+
+  // Wire the "Save to Disk" pill. initDiskSync() is silent — it just
+  // queries permission on any stored handle and sets the initial state.
+  // The pill click handler dispatches based on that state.
+  document.getElementById('diskPill')?.addEventListener('click', onDiskPillClick);
+  onDiskSyncChange(refreshDiskPill);
+  initDiskSync(deps).then(refreshDiskPill);
 
   // Activate the first corpus — this also renders chips and fetches data.
   await activate(DRSCCorpus.id);

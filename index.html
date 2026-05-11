@@ -185,6 +185,47 @@ header {
   50%      { box-shadow: 0 0 0 6px rgba(19, 136, 56, 0.18); }
 }
 
+.disk-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s, background 0.12s;
+  white-space: nowrap;
+  margin-right: 8px;
+}
+.disk-pill:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.disk-pill .disk-icon {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+.disk-pill.connected {
+  background: var(--green-bg);
+  color: var(--green);
+  border-color: var(--green);
+}
+.disk-pill.reconnect {
+  background: var(--amber-bg);
+  color: var(--amber);
+  border-color: var(--amber);
+}
+.disk-pill.syncing {
+  background: var(--accent-bg);
+  color: var(--accent);
+  border-color: var(--accent);
+  cursor: wait;
+}
+.disk-pill[hidden] { display: none; }
+
 .ai-empty {
   text-align: center;
   padding: 24px 16px;
@@ -794,6 +835,9 @@ mark {
   </a>
   <div class="spacer"></div>
   <div class="header-stats" id="headerStats"></div>
+  <button class="disk-pill" id="diskPill" hidden title="Save the index to a folder you control — works offline + portable">
+    <span class="disk-icon">&#128190;</span><span id="diskPillText">Save to Disk</span>
+  </button>
   <button class="ai-pill" id="aiPill" title="AI status — click to configure"><span class="ai-dot"></span><span id="aiPillText">AI off</span></button>
   <button class="icon-btn" id="settingsBtn" title="Settings (AI model, BYOK)" aria-label="Settings">&#9881;</button>
   <button class="icon-btn" id="helpBtn" title="Help" aria-label="Help">?</button>
