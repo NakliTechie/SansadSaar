@@ -26,6 +26,7 @@ import {
   idbGet, idbPut,
   escapeHtml, debounce,
   loadSettings, saveSettings,
+  formatLocalTimestamp,
 } from '../../deps.js';
 import { streamWithPersistence } from '../../ai-streaming.js';
 import {
@@ -376,9 +377,9 @@ function renderResultsLine() {
   const indexMeta = state.data.indexMeta;
   let metaLine = '';
   if (indexMeta?.scraped_at) {
-    metaLine = `Mirror updated <b>${escapeHtml(indexMeta.scraped_at.replace('T', ' ').replace('Z', ' UTC'))}</b>`;
+    metaLine = `Mirror updated <b>${escapeHtml(formatLocalTimestamp(indexMeta.scraped_at))}</b>`;
   } else if (meta?.last_update) {
-    metaLine = `Mirror updated <b>${escapeHtml(meta.last_update.replace('T', ' ').replace('Z', ' UTC'))}</b>`;
+    metaLine = `Mirror updated <b>${escapeHtml(formatLocalTimestamp(meta.last_update))}</b>`;
   }
   const withText = Object.keys(state.data.manifest?.texts || {}).length;
   const bundle   = state.searchBundle;
@@ -399,7 +400,7 @@ function renderResultsLine() {
   } else if (withText) {
     indexLine = `<span>Title search · <b>${withText}</b> bills with text · <a href="#" id="enableDeepLink" style="color:var(--accent)">enable deep search</a></span>`;
   }
-  el.innerHTML = `Showing <b>${shown}</b> of <b>${total}</b> bills. ${metaLine} ${indexLine}`;
+  el.innerHTML = `<div class="rl-primary">Showing <b>${shown}</b> of <b>${total}</b> bills. ${metaLine}</div>${indexLine ? `<div class="rl-secondary">${indexLine}</div>` : ''}`;
 
   const enableLink = document.getElementById('enableDeepLink');
   if (enableLink) {

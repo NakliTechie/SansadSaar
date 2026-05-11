@@ -24,6 +24,7 @@ import {
   idbGet, idbPut, idbCursor,
   escapeHtml, debounce,
   loadSettings, saveSettings,
+  formatLocalTimestamp,
 } from '../../deps.js';
 import { streamWithPersistence } from '../../ai-streaming.js';
 import {
@@ -371,7 +372,7 @@ function renderResultsLine() {
   const meta = state.data.meta;
   let metaLine = '';
   if (meta?.generated_at) {
-    metaLine = `Mirror updated <b>${escapeHtml(meta.generated_at.replace('T', ' ').replace('Z', ' UTC'))}</b>`;
+    metaLine = `Mirror updated <b>${escapeHtml(formatLocalTimestamp(meta.generated_at))}</b>`;
   }
 
   let indexLine = '';
@@ -396,7 +397,7 @@ function renderResultsLine() {
   } else {
     indexLine = `<span>Title search only · <b>${mirrorWithText}</b> debates with text · <a href="#" id="enableDeepLink" style="color:var(--accent)">enable deep search</a></span>`;
   }
-  el.innerHTML = `Showing <b>${shown}</b> of <b>${total}</b> parliamentary debates. ${metaLine} ${indexLine}`;
+  el.innerHTML = `<div class="rl-primary">Showing <b>${shown}</b> of <b>${total}</b> parliamentary debates. ${metaLine}</div>${indexLine ? `<div class="rl-secondary">${indexLine}</div>` : ''}`;
 
   const enableLink = document.getElementById('enableDeepLink');
   if (enableLink) {
@@ -1061,8 +1062,9 @@ function exportSummariesMD() {
 const _matchDebatesKey = (k) => k.startsWith('debates|');
 
 async function loadCachedSummaries() {
+  // Caller gates renderList() on !silent — see drsc/index.js loadCachedSummaries
+  // for rationale (silent cross-corpus preloads must not touch visible DOM).
   await hydrateFromIDB({ store: 'summaries', target: state.cache.summaries, matches: _matchDebatesKey });
-  renderList();
 }
 async function loadCachedChats() {
   await hydrateFromIDB({ store: 'chats', target: state.cache.chats, matches: _matchDebatesKey });
@@ -1165,7 +1167,7 @@ async function activate(deps, { silent = false } = {}) {
       applyFilters();
     }
 
-    loadCachedSummaries();
+    loadCachedSummaries().then(() => { if (!silent) renderList(); });
     loadCachedChats();
     loadCachedTexts().then((n) => {
       if (n && !silent) {

@@ -905,6 +905,30 @@ function renderCorpusChips() {
   el.querySelectorAll('.corpus-chip').forEach(btn => {
     btn.addEventListener('click', () => activate(btn.dataset.corpus));
   });
+
+  // Mobile compact picker — same data, rendered as a <select> with
+  // <optgroup>s per macroGroup. CSS hides one or the other based on
+  // viewport; the change listener routes through the same activate()
+  // path as a chip click.
+  const sel = document.getElementById('corpusSelect');
+  if (sel) {
+    const opts = [];
+    for (const [g, list] of groups) {
+      const labelAttr = showGroupLabels ? ` label="${escapeHtml(g.charAt(0).toUpperCase() + g.slice(1))}"` : '';
+      if (showGroupLabels) opts.push(`<optgroup${labelAttr}>`);
+      for (const c of list) {
+        const selected = c.id === activeCorpusId ? ' selected' : '';
+        opts.push(`<option value="${escapeHtml(c.id)}"${selected}>${escapeHtml(c.shortLabel)}</option>`);
+      }
+      if (showGroupLabels) opts.push(`</optgroup>`);
+    }
+    sel.innerHTML = opts.join('');
+    // Idempotent — replace previous listener by cloning. Simpler than
+    // tracking handle to remove.
+    const clone = sel.cloneNode(true);
+    sel.replaceWith(clone);
+    clone.addEventListener('change', (e) => activate(e.target.value));
+  }
 }
 
 async function refreshCorpusStatus() {
@@ -920,16 +944,82 @@ async function refreshCorpusStatus() {
     status = { lastUpdate: null, error: e?.message || 'fetch failed' };
   }
 
+  // Trailing caret is only visible on mobile (CSS) — advertises the
+  // tap-to-expand affordance that toggles `body.stats-expanded`.
+  const caret = '<span class="corpus-status-caret" aria-hidden="true">&#9662;</span>';
+
   el.classList.remove('ready', 'stale', 'error');
   if (!status || status.error || !status.lastUpdate) {
     el.classList.add('error');
-    el.innerHTML = `<span class="dot"></span><span>${escapeHtml(c.shortLabel)}: data unavailable</span>`;
+    el.innerHTML = `<span class="dot"></span><span>${escapeHtml(c.shortLabel)}: data unavailable</span>${caret}`;
     return;
   }
   const bucket = statusBucket(status.lastUpdate);
   el.classList.add(bucket);
   const rel = relativeTime(status.lastUpdate) || 'unknown';
-  el.innerHTML = `<span class="dot"></span><span>${escapeHtml(c.shortLabel)}: updated ${escapeHtml(rel)}</span>`;
+  el.innerHTML = `<span class="dot"></span><span>${escapeHtml(c.shortLabel)}: updated ${escapeHtml(rel)}</span>${caret}`;
+}
+
+// ── Mobile chrome: stats pill expansion + filters toggle ─────────────────────
+//
+// Wired once at boot. Both target chrome that's only visible on mobile —
+// desktop CSS ignores the `body.stats-expanded` and `.filters-wrap.expanded`
+// classes via @media gating, so these handlers are harmless on wide viewports.
+
+function wireMobileChrome() {
+  const pill = document.getElementById('corpusStatus');
+  pill?.addEventListener('click', () => {
+    const expanded = document.body.classList.toggle('stats-expanded');
+    pill.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  });
+
+  const toggle = document.getElementById('filtersToggleBtn');
+  const wrap   = document.getElementById('filtersWrap');
+  toggle?.addEventListener('click', () => {
+    const expanded = wrap.classList.toggle('expanded');
+    toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  });
+
+  // Update the toggle label on any filter interaction. Delegation covers
+  // every corpus's filter row without each corpus needing to know. We also
+  // recount on clicks (deferred via microtask) — clicking the corpus-owned
+  // "Reset filters" × button mutates select values programmatically, which
+  // doesn't fire 'change'. The microtask runs after that handler completes.
+  const fc = document.getElementById('filtersContainer');
+  ['input', 'change'].forEach(evt =>
+    fc?.addEventListener(evt, () => updateFiltersAppliedCount(), { passive: true }));
+  fc?.addEventListener('click', () =>
+    Promise.resolve().then(updateFiltersAppliedCount), { passive: true });
+}
+
+// Count "applied" filters by walking #filtersContainer. Heuristic:
+// - search/text inputs count when non-empty
+// - selects whose first <option> has an empty value count when their
+//   current value is non-empty (this excludes sort-order dropdowns like
+//   "Newest first" whose options never have an empty value).
+// Updates #filtersToggleLabel to "Filters" or "Filters · N applied" with
+// a small badge. Idempotent — safe to call whenever.
+function updateFiltersAppliedCount() {
+  const labelEl = document.getElementById('filtersToggleLabel');
+  if (!labelEl) return;
+  const container = document.getElementById('filtersContainer');
+  if (!container) { labelEl.textContent = 'Filters'; return; }
+
+  let n = 0;
+  container.querySelectorAll('input, select').forEach(el => {
+    if (el.tagName === 'INPUT' && (el.type === 'search' || el.type === 'text')) {
+      if ((el.value || '').trim()) n++;
+    } else if (el.tagName === 'SELECT') {
+      const first = el.options[0];
+      if (first && first.value === '' && el.value !== '') n++;
+    } else if (el.type === 'checkbox' && el.checked) {
+      n++;
+    }
+  });
+
+  labelEl.innerHTML = n > 0
+    ? `Filters <span class="applied-count">${n}</span>`
+    : `Filters`;
 }
 
 // Each corpus is responsible for making its own `activate()` idempotent —
@@ -948,6 +1038,10 @@ async function activate(corpusId) {
     if (ok === false) return;
   }
   if (!isSameAsActive) await refreshCorpusStatus();
+  // Refresh the mobile filters-toggle label — each corpus's renderFilterRow
+  // injects different inputs/selects, so the applied count needs a recount
+  // on every activation.
+  updateFiltersAppliedCount();
   broadcast('corpus-activated', { corpus: corpusId });
 }
 
@@ -1118,6 +1212,7 @@ async function init() {
   corpora.set(DebatesCorpus.id, DebatesCorpus);
 
   attachShellHandlers();
+  wireMobileChrome();
   buildJSAPI();
   refreshAIPill();
 

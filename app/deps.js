@@ -118,6 +118,27 @@ export function relativeTime(iso) {
   return days + ' days ago';
 }
 
+// Format an ISO timestamp in the viewer's local timezone, preserving the
+// existing "YYYY-MM-DD HH:MM:SS TZ" shape that the UTC version used. The TZ
+// abbreviation comes from Intl.DateTimeFormat (e.g. 'IST', 'GMT+5:30', 'PST'
+// depending on browser/locale); we just append whatever it returns so users
+// know it's local, not UTC.
+export function formatLocalTimestamp(iso) {
+  if (!iso) return '';
+  const d = iso instanceof Date ? iso : new Date(iso);
+  if (isNaN(d)) return '';
+  const pad = n => String(n).padStart(2, '0');
+  const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  let tz = '';
+  try {
+    tz = new Intl.DateTimeFormat(undefined, { timeZoneName: 'short' })
+      .formatToParts(d)
+      .find(p => p.type === 'timeZoneName')?.value || '';
+  } catch {}
+  return tz ? `${date} ${time} ${tz}` : `${date} ${time}`;
+}
+
 // Severity bucket for a corpus status pill. Drives the colour: ready=green,
 // stale=amber (>3 days), error=red.
 export function statusBucket(iso) {

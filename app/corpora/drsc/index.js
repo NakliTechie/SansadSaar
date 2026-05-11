@@ -12,6 +12,7 @@ import {
   idbGet, idbPut, idbCursor,
   escapeHtml, debounce,
   loadSettings, saveSettings,
+  formatLocalTimestamp,
 } from '../../deps.js';
 import { streamWithPersistence } from '../../ai-streaming.js';
 import {
@@ -388,7 +389,7 @@ function renderResultsLine() {
   const meta = state.data.meta;
   let metaLine = '';
   if (meta?.generated_at) {
-    metaLine = `Mirror updated <b>${escapeHtml(meta.generated_at.replace('T', ' ').replace('Z', ' UTC'))}</b>`;
+    metaLine = `Mirror updated <b>${escapeHtml(formatLocalTimestamp(meta.generated_at))}</b>`;
   }
 
   let indexLine = '';
@@ -412,7 +413,7 @@ function renderResultsLine() {
   } else {
     indexLine = `<span>Title search only · <b>${mirrorWithText}</b> reports with text · <a href="#" id="enableDeepLink" style="color:var(--accent)">enable deep search</a></span>`;
   }
-  el.innerHTML = `Showing <b>${shown}</b> of <b>${total}</b> reports across <b>${Object.keys(state.data.reports).length}</b> committees. ${metaLine} ${indexLine}`;
+  el.innerHTML = `<div class="rl-primary">Showing <b>${shown}</b> of <b>${total}</b> reports across <b>${Object.keys(state.data.reports).length}</b> committees. ${metaLine}</div>${indexLine ? `<div class="rl-secondary">${indexLine}</div>` : ''}`;
 
   // "enable deep search" inline link — flips the toggle, persists, kicks
   // off both bundle + index fetches. They run in parallel; the listing
@@ -992,8 +993,10 @@ async function loadCachedSummaries() {
   // No key filter — DRSC was the original corpus, its summary keys have
   // no prefix. Other corpora's keys (cag|*, bills|*) get loaded too but
   // never read by DRSC, so it's harmless if a touch wasteful on memory.
+  // Caller is responsible for any post-hydration re-render — silent
+  // preloads (cross-corpus search warmup) must NOT touch the visible DOM,
+  // so renderList() is gated at the call site, not here.
   await hydrateFromIDB({ store: 'summaries', target: state.cache.summaries });
-  renderList();
 }
 
 async function loadCachedChats() {
@@ -1226,7 +1229,7 @@ async function activate(deps, { silent = false } = {}) {
       applyFilters();
     }
 
-    loadCachedSummaries();
+    loadCachedSummaries().then(() => { if (!silent) renderList(); });
     loadCachedChats();
     loadCachedTexts().then((n) => {
       if (n && !silent) {
