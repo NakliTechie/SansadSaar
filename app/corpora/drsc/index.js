@@ -735,6 +735,12 @@ async function generateSummary() {
     if (result.ok) {
       state.cache.summaries[key] = result.text;
       idbPut('summaries', key, result.text).catch(() => {});
+      if (_deps.disk?.saveAi?.() && _deps.disk?.isConnected?.()) {
+        // DRSC report keys are <committee>|<ls>|<num>; write under
+        // ai/<committee>/LS<n>_<num>.summary.md to mirror the text/ layout.
+        const file_id = `LS${r.lok_sabha}_${String(r.report_number).replace(/\//g, '-').replace(/ /g, '_')}`;
+        _deps.disk.write('drsc', `ai/${r.committee}/${file_id}.summary.md`, result.text).catch(() => {});
+      }
     } else {
       state.cache.summaries[key] = previousCached;
       _deps.ui.toast('Summary generation failed: ' + result.error.message);
@@ -830,6 +836,10 @@ async function chatSend(opts) {
     renderChatTab();
     state.cache.chats[k] = [...state.dialogChat];
     idbPut('chats', k, state.dialogChat).catch(() => {});
+    if (_deps.disk?.saveAi?.() && _deps.disk?.isConnected?.()) {
+      const file_id = `LS${r.lok_sabha}_${String(r.report_number).replace(/\//g, '-').replace(/ /g, '_')}`;
+      _deps.disk.write('drsc', `ai/${r.committee}/${file_id}.chat.json`, JSON.stringify(state.dialogChat, null, 2)).catch(() => {});
+    }
   }
 }
 

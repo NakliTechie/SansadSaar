@@ -110,6 +110,13 @@ const ai = {
 
 const search = { provider: 'none', apiKey: '', baseUrl: '' };
 
+// Disk-sync user preferences — independent of whether a folder is currently
+// connected. `saveAiToDisk` is the user-controlled checkbox in Settings:
+// when on, generateSummary and chatSend (in every corpus) write the result
+// to <folder>/<corpus>/ai/ alongside the index files. Default off — AI
+// artifacts are user-private and shouldn't auto-leave IDB without opt-in.
+const diskPrefs = { saveAi: false };
+
 // Corpus registry — Map<id, corpus>.
 const corpora = new Map();
 let activeCorpusId = null;
@@ -757,6 +764,8 @@ function renderSettings() {
   document.getElementById('apiKey').value        = ai.apiKey || '';
   document.getElementById('apiModel').value      = ai.apiModel || '';
   document.getElementById('apiBaseUrl').value    = ai.apiBaseUrl || '';
+  const diskSaveAi = document.getElementById('diskSaveAi');
+  if (diskSaveAi) diskSaveAi.checked = !!diskPrefs.saveAi;
   document.getElementById('searchProvider').value = search.provider || 'none';
   document.getElementById('searchApiKey').value   = search.apiKey || '';
   document.getElementById('searchBaseUrl').value  = search.baseUrl || '';
@@ -821,6 +830,8 @@ function applyShellSettingsFromUI() {
   search.provider = document.getElementById('searchProvider').value;
   search.apiKey   = document.getElementById('searchApiKey').value.trim();
   search.baseUrl  = document.getElementById('searchBaseUrl').value.trim();
+  const diskSaveAi = document.getElementById('diskSaveAi');
+  if (diskSaveAi) diskPrefs.saveAi = diskSaveAi.checked;
 
   // Persist into the single legacy settings JSON (preserves existing keys).
   const s = loadSettings();
@@ -833,6 +844,7 @@ function applyShellSettingsFromUI() {
   s.searchProvider = search.provider;
   s.searchApiKey   = search.apiKey;
   s.searchBaseUrl  = search.baseUrl;
+  s.diskSaveAi     = diskPrefs.saveAi;
   saveSettings(s);
 }
 
@@ -847,6 +859,7 @@ function loadShellSettings() {
   if (s.searchProvider) search.provider = s.searchProvider;
   if (s.searchApiKey)   search.apiKey   = s.searchApiKey;
   if (s.searchBaseUrl)  search.baseUrl  = s.searchBaseUrl;
+  diskPrefs.saveAi = !!s.diskSaveAi;   // default false
 }
 
 // ── Chip switcher + per-corpus status pill ──────────────────────────────────
@@ -981,6 +994,11 @@ const deps = {
     isConnected: diskIsConnected,
     read:        diskRead,
     write:       diskWrite,
+    // User preference (Settings → Save to Disk → AI artifacts). When true
+    // AND a folder is connected, corpora write summaries + chats to
+    // <folder>/<corpus>/ai/ alongside the index. Default false — AI
+    // artifacts stay in IDB unless the user opts in.
+    saveAi:      () => diskPrefs.saveAi,
   },
 
   broadcast,

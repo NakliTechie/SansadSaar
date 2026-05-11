@@ -696,6 +696,12 @@ async function generateSummary() {
     if (result.ok) {
       state.cache.summaries[key] = result.text;
       idbPut('summaries', key, result.text).catch(() => {});
+      // Opt-in disk mirror (Settings → Save to Disk → AI artifacts).
+      // Best-effort: writes to <folder>/cag/ai/<id>.summary.md. Silent
+      // when disabled or folder not connected.
+      if (_deps.disk?.saveAi?.() && _deps.disk?.isConnected?.()) {
+        _deps.disk.write('cag', `ai/${r.id}.summary.md`, result.text).catch(() => {});
+      }
     } else {
       // Immediate-fail — preserve previous cached, surface the error.
       state.cache.summaries[key] = previousCached;
@@ -789,6 +795,9 @@ async function chatSend(opts) {
     renderChatTab();
     state.cache.chats[k] = [...state.dialogChat];
     idbPut('chats', k, state.dialogChat).catch(() => {});
+    if (_deps.disk?.saveAi?.() && _deps.disk?.isConnected?.()) {
+      _deps.disk.write('cag', `ai/${r.id}.chat.json`, JSON.stringify(state.dialogChat, null, 2)).catch(() => {});
+    }
   }
 }
 

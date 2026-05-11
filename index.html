@@ -1002,6 +1002,20 @@ mark {
         </div>
       </div>
 
+      <div class="settings-section">
+        <h3>Save to Disk</h3>
+        <p>The header pill controls saving the index + the texts you've opened. Optionally, also save your AI-generated summaries and chats alongside, so they're part of your portable folder. Off by default — your AI work stays in this browser's IndexedDB unless you enable this.</p>
+        <div class="settings-row">
+          <label for="diskSaveAi">AI artifacts</label>
+          <div>
+            <label style="display:inline-flex; align-items:center; gap:6px; font-size:0.86rem; color:var(--text)">
+              <input type="checkbox" id="diskSaveAi" style="width:auto"> Save AI summaries &amp; chats to disk (when folder is connected)
+            </label>
+            <p style="font-size:0.78rem; color:var(--muted); margin-top:4px">Files land under <code>&lt;folder&gt;/&lt;corpus&gt;/ai/</code>. Markdown for summaries, JSON for chats. Delete from Finder/Files to remove — nothing else clears them.</p>
+          </div>
+        </div>
+      </div>
+
       <!-- Per-corpus settings sections (Deep search, Data refresh, etc.) — populated at modal open -->
       <div id="corpusSettingsSections"></div>
 
