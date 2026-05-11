@@ -319,7 +319,7 @@ function applyFilters() {
   // index isn't loaded — in that case the per-token check falls through to
   // substring paths (title / head / cached body).
   const tokenIndexSets = parsedQ
-    ? parsedQ.tokens.map(t => _expandTokenToDocs(t))
+    ? parsedQ.tokens.map(t => expandTokenToDocs(state.searchIndex, t))
     : [];
 
   const filtered = all.filter(r => {
@@ -1293,7 +1293,7 @@ const api = {
     const parsedQ = parseQuery(query);
     if (!parsedQ.tokens.length && !parsedQ.phrases.length) return getAllReports();
     const bundle = state.searchBundle;
-    const tokenIndexSets = parsedQ.tokens.map(t => _expandTokenToDocs(t));
+    const tokenIndexSets = parsedQ.tokens.map(t => expandTokenToDocs(state.searchIndex, t));
     const anyMode = !!opts.any;
     return getAllReports().filter(r => {
       const key = reportKey(r);
@@ -1323,6 +1323,24 @@ const api = {
     if (!r) return false;
     openReportByKey(reportKey(r));
     return true;
+  },
+  /** Cross-corpus search adapter — see CAG's identical contract. */
+  async searchForGlobal(query, { deep = true, limit = 10 } = {}) {
+    const items = await api.search(query, { deep });
+    const subs = (r) => {
+      const parts = [];
+      const cm = COMMITTEES[r.committee];
+      if (cm?.name)        parts.push(cm.name);
+      if (r.lok_sabha)     parts.push(`LS${r.lok_sabha}`);
+      if (r.report_number) parts.push(`#${r.report_number}`);
+      if (r._category)     parts.push(r._category);
+      return parts.join(' · ');
+    };
+    return items.slice(0, limit).map(r => ({
+      key:      reportKey(r),
+      title:    r.title || '(untitled)',
+      subtitle: subs(r),
+    }));
   },
   // Constants useful to programmatic consumers.
   committees: () => COMMITTEES,

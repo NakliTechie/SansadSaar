@@ -662,6 +662,87 @@ main {
   word-break: break-all;
 }
 
+/* ── Global search modal (Cmd+K) ─────────────────── */
+#globalSearchModal .modal.global-search {
+  max-width: 720px;
+  width: 90vw;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+#globalSearchInput {
+  width: 100%;
+  font-size: 1.05rem;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  margin-bottom: 8px;
+}
+#globalSearchInput:focus { outline: none; border-color: var(--accent); }
+.global-search-hint {
+  font-size: 0.74rem;
+  color: var(--muted);
+  margin: 0 0 12px;
+}
+.global-search-hint kbd {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 4px;
+  font-family: inherit;
+  font-size: 0.72rem;
+}
+.global-search-results {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+.global-search-empty {
+  color: var(--muted);
+  font-size: 0.88rem;
+  text-align: center;
+  margin: 24px 0;
+}
+.global-search-group {
+  margin-bottom: 16px;
+}
+.global-search-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px;
+  margin-bottom: 4px;
+  font-size: 0.82rem;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+.global-search-group-head .label { font-weight: 600; color: var(--text); }
+.global-search-hit {
+  padding: 8px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.88rem;
+  line-height: 1.42;
+  transition: background 0.08s;
+}
+.global-search-hit:hover, .global-search-hit.active {
+  background: var(--surface2);
+}
+.global-search-hit .hit-title {
+  color: var(--text);
+}
+.global-search-hit .hit-meta {
+  font-size: 0.74rem;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.global-search-hit mark {
+  background: rgba(225, 145, 18, 0.25);
+  color: inherit;
+}
+
 /* ── Help modal ─────────────────────────────────── */
 #helpModal .modal-body { font-size: 0.88rem; line-height: 1.65; }
 #helpModal h3 { margin: 14px 0 6px; font-size: 1rem; color: var(--accent); }
@@ -839,6 +920,7 @@ mark {
   </a>
   <div class="spacer"></div>
   <div class="header-stats" id="headerStats"></div>
+  <button class="icon-btn" id="globalSearchBtn" title="Search across every corpus (⌘K / Ctrl+K)" aria-label="Search all">&#128270;</button>
   <button class="disk-pill" id="diskPill" hidden title="Save the index to a folder you control — works offline + portable">
     <span class="disk-dot"></span><span id="diskPillText">Save to Disk</span>
   </button>
@@ -1129,6 +1211,24 @@ mark {
 <div class="footer-nav">
   <a href="https://naklitechie.github.io/" target="_blank" rel="noopener">&#11013; More projects</a>
   <a href="https://github.com/NakliTechie/SansadSaar" target="_blank" rel="noopener">&#9000; Source</a>
+</div>
+
+<div class="modal-bg" id="globalSearchModal" aria-hidden="true">
+  <div class="modal global-search">
+    <div class="modal-header">
+      <div class="modal-title">Search across all corpora</div>
+      <button class="icon-btn" id="globalSearchCloseBtn" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="search" id="globalSearchInput"
+             placeholder="Type to search DRSC + CAG + Bills together…"
+             autocomplete="off" spellcheck="false">
+      <p class="global-search-hint">Press <kbd>Esc</kbd> to close • <kbd>↑</kbd>/<kbd>↓</kbd> to navigate • <kbd>Enter</kbd> to open</p>
+      <div id="globalSearchResults" class="global-search-results">
+        <p class="global-search-empty">Type a query to search across every loaded corpus.</p>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>

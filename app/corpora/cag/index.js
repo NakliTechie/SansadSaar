@@ -1179,7 +1179,7 @@ const api = {
     const parsedQ = parseQuery(query);
     if (!parsedQ.tokens.length && !parsedQ.phrases.length) return getAllReports();
     const bundle = state.searchBundle;
-    const tokenIndexSets = parsedQ.tokens.map(t => _expandTokenToDocs(t));
+    const tokenIndexSets = parsedQ.tokens.map(t => expandTokenToDocs(state.searchIndex, t));
     const anyMode = !!opts.any;
     return getAllReports().filter(r => {
       const key = reportKey(r);
@@ -1208,6 +1208,30 @@ const api = {
     if (!r) return false;
     openReportByKey(reportKey(r));
     return true;
+  },
+  /**
+   * Cross-corpus search adapter — calls api.search and pre-formats hits
+   * into the shape the global-search modal expects:
+   *   { key, title, subtitle, meta? }
+   * The shell's global search fans out to every corpus's searchForGlobal
+   * in parallel; each corpus owns its own formatting.
+   */
+  async searchForGlobal(query, { deep = true, limit = 10 } = {}) {
+    const items = await api.search(query, { deep });
+    const subs = (r) => {
+      const parts = [];
+      if (r.gov_type)    parts.push(GOV_TYPE_SHORT[r.gov_type] || r.gov_type);
+      const ti = reportTypeInfo(r);
+      if (ti?.short)     parts.push(ti.short);
+      if (r.year)        parts.push(String(r.year));
+      if (r.id != null)  parts.push(`ID ${r.id}`);
+      return parts.join(' · ');
+    };
+    return items.slice(0, limit).map(r => ({
+      key:      reportKey(r),
+      title:    r.title || '(untitled)',
+      subtitle: subs(r),
+    }));
   },
   govTypes:    () => Object.keys(GOV_TYPE_SHORT),
   reportTypes: () => Object.keys(REPORT_TYPE_INFO),

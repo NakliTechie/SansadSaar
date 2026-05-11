@@ -1159,6 +1159,23 @@ const api = {
     openBillByKey(billKey(b));
     return true;
   },
+  /** Cross-corpus search adapter — see CAG/DRSC for the identical contract. */
+  async searchForGlobal(query, { limit = 10 } = {}) {
+    const items = api.search(query);   // Bills's search is sync today
+    const subs = (b) => {
+      const parts = [];
+      if (b.billType)    parts.push(b.billType);
+      if (b.billYear)    parts.push(String(b.billYear));
+      if (b.status)      parts.push(b.status);
+      if (b.ministryName) parts.push(b.ministryName);
+      return parts.join(' · ');
+    };
+    return items.slice(0, limit).map(b => ({
+      key:      billKey(b),
+      title:    b.billName || '(untitled)',
+      subtitle: subs(b),
+    }));
+  },
 };
 
 // ── Export the corpus contract ─────────────────────────────────────────────

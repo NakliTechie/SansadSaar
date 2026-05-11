@@ -23,6 +23,7 @@ import {
   connectAndSync, reconnect, syncNow,
   diskIsConnected, diskRead, diskWrite,
 } from './disk-sync.js';
+import { initGlobalSearch } from './global-search.js';
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -1120,6 +1121,11 @@ async function init() {
   document.getElementById('diskPill')?.addEventListener('click', onDiskPillClick);
   onDiskSyncChange(refreshDiskPill);
   initDiskSync(deps).then(refreshDiskPill);
+
+  // Wire the global Cmd+K search modal. Each corpus exposes
+  // api.searchForGlobal() for the fan-out; this just plumbs the input
+  // and keyboard handlers. See CONV.md "Cross-corpus search modal".
+  initGlobalSearch({ deps, corpora, activate });
 
   // Activate the first corpus — this also renders chips and fetches data.
   await activate(DRSCCorpus.id);
