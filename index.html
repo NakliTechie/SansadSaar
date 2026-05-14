@@ -1390,7 +1390,7 @@ body.stats-expanded .corpus-status-caret { transform: rotate(180deg); }
       </div>
       <div class="tab-pane" id="hAI">
         <h3>Local AI (default)</h3>
-        <p>Runs Gemma 4 (E2B or E4B) entirely in your browser via WebGPU. The first load downloads weights from Hugging Face (~1.5 GB for E2B, ~4.9 GB for E4B); subsequent loads are instant from your browser cache. Requires a recent Chrome/Edge or Firefox 130+ with a compatible GPU. No data leaves your device.</p>
+        <p>Runs an open-weight model entirely in your browser via WebGPU. Five options today: <b>Gemma 4 E2B</b> (~1.5 GB, default), <b>Gemma 4 E4B</b> (~4.9 GB, stronger), <b>Ternary Bonsai 1.7B</b> (~470 MB, smallest), <b>Bonsai 4B</b> (~1.1 GB), and <b>Bonsai 8B</b> (~2.2 GB, 64K context). First load downloads weights from Hugging Face; subsequent loads are instant from browser cache. Requires a recent Chrome/Edge/Brave or Firefox 130+ with a compatible GPU. No data leaves your device.</p>
         <h3>BYOK (Bring Your Own Key)</h3>
         <p>If WebGPU isn't available or you want a stronger model, configure a provider in Settings. Free options:</p>
         <ul>
@@ -1400,6 +1400,9 @@ body.stats-expanded .corpus-status-caret { transform: rotate(180deg); }
           <li><b>Ollama</b> — runs locally on your computer; no cloud. <code>ollama pull llama3.2</code> then enable <a href="https://github.com/ollama/ollama/blob/main/docs/faq.md#how-can-i-allow-additional-web-origins-to-access-ollama" target="_blank">CORS for browsers</a>.</li>
         </ul>
         <p>Paid: <b>Anthropic</b> (best summaries) at <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a>, <b>OpenAI</b> at <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com</a>.</p>
+        <h3>Where AI applies</h3>
+        <p>AI summary + Ask are available in <b>DRSC, CAG, FC, Bills, LC, Debates, Gazettes</b> — whenever the report has extracted text (rows with the <span class="text-status ok">text</span> badge). For metadata-only rows the AI tabs show a hint to open the source PDF instead.</p>
+        <p><b>Questions</b> is intentionally metadata-only here — its records are short Q&amp;A pairs without long text bodies. Per-MP and per-question analytics will live in <em>Netas Explorer</em> (sibling project, coming soon).</p>
       </div>
       <div class="tab-pane" id="hPrivacy">
         <h3>What stays in your browser</h3>
@@ -1423,7 +1426,7 @@ body.stats-expanded .corpus-status-caret { transform: rotate(180deg); }
         <h3>What never happens</h3>
         <ul>
           <li>No analytics. No accounts. No telemetry. No server logs (no server).</li>
-          <li>The page is served as a static <code>index.html</code> from GitHub Pages.</li>
+          <li>The page is served as a static <code>index.html</code> from Cloudflare Workers Static Assets, on the custom domain.</li>
         </ul>
       </div>
       <div class="tab-pane" id="hCredits">
@@ -1444,7 +1447,7 @@ body.stats-expanded .corpus-status-caret { transform: rotate(180deg); }
           <li><a href="https://huggingface.co/docs/transformers.js" target="_blank">Transformers.js v4</a> — runs Gemma in the browser via WebGPU</li>
           <li><a href="https://huggingface.co/onnx-community/gemma-4-E2B-it-ONNX" target="_blank">Gemma 4 (ONNX)</a> — by Google, ONNX conversion by the HF community</li>
           <li><a href="https://github.com/py-pdf/pypdf" target="_blank">pypdf</a> — PDF text extraction in the daily mirror Action</li>
-          <li>Mirror hosted on <a href="https://workers.cloudflare.com/" target="_blank">Cloudflare Workers + Static Assets</a>; data scraped daily on <a href="https://github.com/features/actions" target="_blank">GitHub Actions</a></li>
+          <li>Mirror hosted on <a href="https://workers.cloudflare.com/" target="_blank">Cloudflare Workers + Static Assets</a>; each corpus scraped on its own cron (hourly to daily) via <a href="https://github.com/features/actions" target="_blank">GitHub Actions</a></li>
         </ul>
         <h3>Source</h3>
         <ul>
@@ -1472,7 +1475,7 @@ body.stats-expanded .corpus-status-caret { transform: rotate(180deg); }
     </div>
     <div class="modal-body">
       <input type="search" id="globalSearchInput"
-             placeholder="Type to search DRSC + CAG + Bills together…"
+             placeholder="Search across DRSC, CAG, FC, Bills, LC, Debates, Questions, Gazettes…"
              autocomplete="off" spellcheck="false">
       <p class="global-search-hint">Press <kbd>Esc</kbd> to close • <kbd>↑</kbd>/<kbd>↓</kbd> to navigate • <kbd>Enter</kbd> to open</p>
       <div id="globalSearchResults" class="global-search-results">
