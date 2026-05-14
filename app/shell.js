@@ -1051,6 +1051,10 @@ async function activate(corpusId) {
   const isSameAsActive = activeCorpusId === corpusId;
   activeCorpusId = corpusId;
   renderCorpusChips();
+  if (!isSameAsActive) {
+    const resultsLineEl = document.getElementById('resultsLine');
+    if (resultsLineEl) resultsLineEl.innerHTML = '';
+  }
   if (typeof c.activate === 'function') {
     const ok = await c.activate(depsForCorpus(corpusId));
     if (ok === false) return;

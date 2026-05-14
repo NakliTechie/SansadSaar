@@ -416,7 +416,9 @@ function renderResultsLine() {
   } else if (withText) {
     indexLine = `<span>Title search · <b>${withText}</b> bills with text · <a href="#" id="enableDeepLink" style="color:var(--accent)">enable deep search</a></span>`;
   }
-  el.innerHTML = `<div class="rl-primary">Showing <b>${shown}</b> of <b>${total}</b> bills. ${metaLine}</div>${indexLine ? `<div class="rl-secondary">${indexLine}</div>` : ''}`;
+  el.innerHTML = (shown < total)
+    ? `<div class="rl-primary">Showing <b>${shown}</b> of <b>${total}</b></div>`
+    : '';
 
   const enableLink = document.getElementById('enableDeepLink');
   if (enableLink) {

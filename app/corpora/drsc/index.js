@@ -434,7 +434,9 @@ function renderResultsLine() {
   } else {
     indexLine = `<span>Title search only · <b>${mirrorWithText}</b> reports with text · <a href="#" id="enableDeepLink" style="color:var(--accent)">enable deep search</a></span>`;
   }
-  el.innerHTML = `<div class="rl-primary">Showing <b>${shown}</b> of <b>${total}</b> reports across <b>${Object.keys(state.data.reports).length}</b> committees. ${metaLine}</div>${indexLine ? `<div class="rl-secondary">${indexLine}</div>` : ''}`;
+  el.innerHTML = (shown < total)
+    ? `<div class="rl-primary">Showing <b>${shown}</b> of <b>${total}</b></div>`
+    : '';
 
   // "enable deep search" inline link — flips the toggle, persists, kicks
   // off both bundle + index fetches. They run in parallel; the listing

@@ -274,9 +274,9 @@ function renderResultsLine() {
   if (meta?.generated_at) {
     metaLine = `Mirror updated <b>${escapeHtml(formatLocalTimestamp(meta.generated_at))}</b>`;
   }
-  const note = `<span title="SansadSaar shows question metadata; for per-MP analytics see Netas Explorer (coming soon).">Metadata search only</span>`;
-  el.innerHTML = `<div class="rl-primary">Showing <b>${shown}</b> of <b>${total}</b> questions. ${metaLine}</div>` +
-                 `<div class="rl-secondary">${note}</div>`;
+  el.innerHTML = (shown < total)
+    ? `<div class="rl-primary">Showing <b>${shown}</b> of <b>${total}</b></div>`
+    : '';
 }
 
 function renderList() {
