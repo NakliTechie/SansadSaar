@@ -46,6 +46,21 @@ const DATA_BASE_URL = (() => {
   return override || 'https://sansadsaar-data.naklitechie.com/';
 })();
 
+// Per-corpus data-origin overrides. Some corpora live in their own repos
+// + CF Pages projects (split 2026-05-14 to keep parliamentwatch-data
+// under the 20K-files cap). Update these URLs when CF Pages custom
+// domains are wired up. The default `?data=...` URL override only
+// affects the main DATA_BASE_URL; corpora listed here ignore it.
+const CORPUS_DATA_BASE_URLS = {
+  // Gazettes: sansadsaar-gazettes repo (private). Pages.dev default
+  // until a custom subdomain (gazettes.sansadsaar-data.naklitechie.com)
+  // is set up in Cloudflare.
+  gazettes:  'https://sansadsaar-gazettes.pages.dev/',
+  // Debates + Questions: sansadsaar-proceedings-data repo (private).
+  debates:   'https://sansadsaar-proceedings-data.pages.dev/',
+  questions: 'https://sansadsaar-proceedings-data.pages.dev/',
+};
+
 // Local-AI model registry. Multimodal uses AutoProcessor +
 // Gemma4ForConditionalGeneration; causal uses AutoTokenizer +
 // AutoModelForCausalLM. The 'type' field drives the worker's load path.
@@ -1035,7 +1050,7 @@ async function activate(corpusId) {
   activeCorpusId = corpusId;
   renderCorpusChips();
   if (typeof c.activate === 'function') {
-    const ok = await c.activate(deps);
+    const ok = await c.activate(depsForCorpus(corpusId));
     if (ok === false) return;
   }
   if (!isSameAsActive) await refreshCorpusStatus();
@@ -1047,6 +1062,18 @@ async function activate(corpusId) {
 }
 
 // ── deps factory — what corpus modules see ──────────────────────────────────
+
+// Returns a per-corpus deps object with the right dataBaseUrl. Corpora
+// in CORPUS_DATA_BASE_URLS get their own origin; everything else uses
+// the global DATA_BASE_URL.
+function depsForCorpus(corpusId) {
+  const override = CORPUS_DATA_BASE_URLS[corpusId];
+  if (!override) return deps;
+  return {
+    ...deps,
+    config: { ...deps.config, dataBaseUrl: override },
+  };
+}
 
 const deps = {
   config: { dataBaseUrl: DATA_BASE_URL, version: VERSION, product: PRODUCT },
@@ -1240,7 +1267,7 @@ async function init() {
   for (const c of corpora.values()) {
     if (c.id === DRSCCorpus.id) continue;
     if (typeof c.activate !== 'function') continue;
-    c.activate(deps, { silent: true }).catch(e =>
+    c.activate(depsForCorpus(c.id), { silent: true }).catch(e =>
       console.warn(`[shell] silent preload of ${c.id} failed:`, e));
   }
 
