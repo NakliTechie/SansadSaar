@@ -110,7 +110,7 @@ function corpusIds() {
 }
 
 async function syncCorpus(corpusId, root, onProgress) {
-  const dataUrl = _deps.config.dataBaseUrl;
+  const dataUrl = _deps.config.dataBaseUrlFor?.(corpusId) || _deps.config.dataBaseUrl;
   const sub = await root.getDirectoryHandle(corpusId, { create: true });
 
   // Fetch meta first; the shard lists tell us what else to pull.
@@ -366,10 +366,10 @@ export async function diskRead(corpusId, path) {
 
 async function checkStalenessAndAutoSync() {
   if (!diskIsConnected()) return;
-  const dataUrl = _deps.config.dataBaseUrl;
   const ids = corpusIds();
   const stale = [];
   for (const id of ids) {
+    const dataUrl = _deps.config.dataBaseUrlFor?.(id) || _deps.config.dataBaseUrl;
     try {
       const cfText = await fetchText(`${dataUrl}${id}/meta.json`);
       const cfMeta = JSON.parse(cfText);

@@ -1082,7 +1082,16 @@ function depsForCorpus(corpusId) {
 }
 
 const deps = {
-  config: { dataBaseUrl: DATA_BASE_URL, version: VERSION, product: PRODUCT },
+  config: {
+    dataBaseUrl: DATA_BASE_URL,
+    // Per-corpus lookup for callers (like disk-sync) that iterate
+    // corpora and need to know the right origin for each. Corpora
+    // listed in CORPUS_DATA_BASE_URLS get their own origin; the rest
+    // fall back to DATA_BASE_URL.
+    dataBaseUrlFor: (corpusId) => CORPUS_DATA_BASE_URLS[corpusId] || DATA_BASE_URL,
+    version: VERSION,
+    product: PRODUCT,
+  },
 
   ai: {
     generate: aiGenerate,
