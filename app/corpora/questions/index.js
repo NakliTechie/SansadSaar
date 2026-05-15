@@ -274,7 +274,7 @@ function renderResultsLine() {
   if (meta?.generated_at) {
     metaLine = `Mirror updated <b>${escapeHtml(formatLocalTimestamp(meta.generated_at))}</b>`;
   }
-  el.innerHTML = (shown < total)
+  el.innerHTML = (shown > 0 && shown < total)
     ? `<div class="rl-primary">Showing <b>${shown}</b> of <b>${total}</b></div>`
     : '';
 }

@@ -434,7 +434,7 @@ function renderResultsLine() {
   } else {
     indexLine = `<span>Title search only · <b>${mirrorWithText}</b> reports with text · <a href="#" id="enableDeepLink" style="color:var(--accent)">enable deep search</a></span>`;
   }
-  el.innerHTML = (shown < total)
+  el.innerHTML = (shown > 0 && shown < total)
     ? `<div class="rl-primary">Showing <b>${shown}</b> of <b>${total}</b></div>`
     : '';
 
