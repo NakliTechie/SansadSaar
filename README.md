@@ -14,6 +14,17 @@ A single-file browser app over a growing set of Indian parliamentary corpora —
 
 The data is public but scattered across multiple government sites. SansadSaar mirrors it and presents it in one searchable, offline-capable interface — no servers, no logins, no analytics.
 
+Also reachable at `sansadlocal.naklitechie.com` (legacy alias).
+
+## Data
+
+Each corpus is mirrored in a sibling repo:
+
+- [parliamentwatch-data](https://github.com/NakliTechie/parliamentwatch-data) — DRSC, CAG, Bills, LC, FC
+- [sansadsaar-proceedings-data](https://github.com/NakliTechie/sansadsaar-proceedings-data) — Debates, Questions
+- [sansadsaar-gazettes](https://github.com/NakliTechie/sansadsaar-gazettes) — Central Gazette
+- [sansadsaar-lc](https://github.com/NakliTechie/sansadsaar-lc) — Law Commission PDF archive
+
 ## Credits
 
 - Indian Parliament data via [sansad.in](https://sansad.in).
