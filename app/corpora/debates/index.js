@@ -29,9 +29,6 @@ import {
 import { streamWithPersistence } from '../../ai-streaming.js';
 import {
   parseQuery, highlightMatches,
-  loadSearchBundle as sharedLoadSearchBundle,
-  loadSearchIndex  as sharedLoadSearchIndex,
-  expandTokenToDocs,
 } from '../../corpus-search.js';
 import { hydrateFromIDB } from '../../corpus-data.js';
 import { loadTextFromShards } from '../../text-shards.js';
@@ -97,17 +94,6 @@ const state = {
   },
 
   dialogChat: [],
-
-  searchBundle: null,
-  bundleLoading: false,
-  bundleLoaded:  false,
-
-  searchIndex:  null,
-  indexLoading: false,
-  indexLoaded:  false,
-
-  deepSearch: false,
-  matchAny:   false,
 
   // RS only — which version is showing in the Full text tab. Defaults
   // to 'floor' (canonical) but the user can switch via the picker.
@@ -376,11 +362,6 @@ function applyFilters() {
   const f = state.filters;
   const rawQ = f.search.trim();
   const parsedQ = rawQ ? parseQuery(rawQ) : null;
-  const bundle = state.searchBundle;
-
-  const tokenIndexSets = parsedQ
-    ? parsedQ.tokens.map(t => expandTokenToDocs(state.searchIndex, t))
-    : [];
 
   const filtered = all.filter(r => {
     if (f.house && r.house !== f.house) return false;
@@ -390,36 +371,11 @@ function applyFilters() {
     if (f.year && String(r._year || '') !== f.year) return false;
     if (!parsedQ) return true;
 
-    const key = reportKey(r);
-    const titleLower  = (r.title || '').toLowerCase();
-    const bundleEntry = bundle ? bundle.map.get(key) : null;
-    const headLower   = bundleEntry ? bundleEntry.head.toLowerCase() : '';
-    const cached      = state.cache.text[key];
-    const cachedLower = cached ? cached.toLowerCase() : '';
-
-    function tokenHits(tok, indexSet) {
-      if (indexSet && indexSet.has(key)) return true;
-      if (titleLower.includes(tok)) return true;
-      if (headLower && headLower.includes(tok)) return true;
-      if (cachedLower && cachedLower.includes(tok)) return true;
-      return false;
-    }
-    function phraseHits(phrase) {
-      if (titleLower.includes(phrase)) return true;
-      if (headLower && headLower.includes(phrase)) return true;
-      if (cachedLower && cachedLower.includes(phrase)) return true;
-      return false;
-    }
-
-    if (state.matchAny) {
-      const hit = parsedQ.tokens.some((t, i) => tokenHits(t, tokenIndexSets[i]))
-              ||  parsedQ.phrases.some(phraseHits);
-      if (!hit) return false;
-    } else {
-      if (!parsedQ.tokens.every((t, i) => tokenHits(t, tokenIndexSets[i]))) return false;
-      if (!parsedQ.phrases.every(phraseHits)) return false;
-    }
-    return true;
+    const titleLower = (r.title || '').toLowerCase();
+    const tokenHits = (tok) => titleLower.includes(tok);
+    const phraseHits = (phrase) => titleLower.includes(phrase);
+    return parsedQ.tokens.every(tokenHits)
+        && parsedQ.phrases.every(phraseHits);
   });
 
   filtered.sort((a, b) => {
@@ -445,63 +401,9 @@ function renderResultsLine() {
   if (!el) return;
   const total = getAllReports().length;
   const shown = state.filtered.length;
-  const meta = state.data.meta;
-  let metaLine = '';
-  if (meta?.generated_at) {
-    metaLine = `Mirror updated <b>${escapeHtml(formatLocalTimestamp(meta.generated_at))}</b>`;
-  }
-
-  let indexLine = '';
-  const bundle = state.searchBundle;
-  const idx = state.searchIndex;
-  const mirrorWithText = Object.values(state.data.manifest?.texts || {}).reduce(
-    (n, byFid) => n + Object.keys(byFid || {}).length, 0);
-  const loading = state.bundleLoading || state.indexLoading;
-  if (loading) {
-    const what = state.bundleLoading && state.indexLoading
-      ? 'bundle + index'
-      : state.bundleLoading ? 'bundle' : 'index';
-    indexLine = `<span class="indexing">Loading search ${what}…</span>`;
-  } else if (state.deepSearch && state.bundleLoaded && bundle) {
-    const tooltip = idx
-      ? `Search hits titles + first ${bundle.head_chars} chars of every debate, plus body-token presence across the corpus.`
-      : `Search hits titles + first ${bundle.head_chars} chars of every debate.`;
-    indexLine = `<span title="${escapeHtml(tooltip)}">Full-text search · ${bundle.total} debates</span>`
-              + ` · <label class="match-any-toggle"><input type="checkbox" id="matchAnyToggle"${state.matchAny ? ' checked' : ''}>match any</label>`;
-  } else if (mirrorWithText === 0) {
-    indexLine = '';
-  } else {
-    indexLine = `<span>Title search only · <b>${mirrorWithText}</b> debates with text · <a href="#" id="enableDeepLink" style="color:var(--accent)">enable deep search</a></span>`;
-  }
   el.innerHTML = (shown > 0 && shown < total)
     ? `<div class="rl-primary">Showing <b>${shown}</b> of <b>${total}</b></div>`
     : '';
-
-  const enableLink = document.getElementById('enableDeepLink');
-  if (enableLink) {
-    enableLink.addEventListener('click', (e) => {
-      e.preventDefault();
-      state.deepSearch = true;
-      const s = loadSettings();
-      s.debates_deepSearch = true;
-      saveSettings(s);
-      renderResultsLine();
-      Promise.all([loadSearchBundle(), loadSearchIndex()]).then(() => {
-        renderResultsLine();
-        if (state.filters.search) applyFilters();
-      });
-    });
-  }
-  const matchAnyToggle = document.getElementById('matchAnyToggle');
-  if (matchAnyToggle) {
-    matchAnyToggle.addEventListener('change', (e) => {
-      state.matchAny = !!e.target.checked;
-      const s = loadSettings();
-      s.debates_matchAny = state.matchAny;
-      saveSettings(s);
-      applyFilters();
-    });
-  }
 
   const sumBtn = document.getElementById('exportSummariesBtn');
   if (sumBtn) {
@@ -577,12 +479,7 @@ function renderHeaderStats() {
   const el = document.getElementById('headerStats');
   if (!el) return;
   const total = getAllReports().length;
-  const withText = Object.values(state.data.manifest?.texts || {}).reduce(
-    (n, byFid) => n + Object.keys(byFid || {}).length, 0);
-  el.innerHTML = `
-    <span><b>${total}</b> debates</span>
-    <span><b>${withText}</b> with text</span>
-  `;
+  el.innerHTML = `<span><b>${total}</b> debates</span>`;
 }
 
 function populateFilters() {
@@ -1031,32 +928,6 @@ async function chatSend(opts) {
   }
 }
 
-// ── Search bundle + index ──────────────────────────────────────────────────
-
-async function loadSearchBundle() {
-  return sharedLoadSearchBundle({
-    state, corpusId: 'debates',
-    idbKey: 'debates-search-bundle.json',
-    urlPath: CORPUS_PREFIX,
-    meta: state.data.meta,
-    deps: _deps,
-    onChange: renderResultsLine,
-    onAfterLoad: () => { if (state.filters.search) applyFilters(); },
-  });
-}
-
-async function loadSearchIndex() {
-  return sharedLoadSearchIndex({
-    state, corpusId: 'debates',
-    idbKey: 'debates-search-index.json',
-    urlPath: CORPUS_PREFIX,
-    meta: state.data.meta,
-    deps: _deps,
-    onChange: renderResultsLine,
-    onAfterLoad: () => { if (state.filters.search) applyFilters(); },
-  });
-}
-
 // ── Export ──────────────────────────────────────────────────────────────────
 
 function _csvCell(v) {
@@ -1232,10 +1103,6 @@ async function activate(deps, { silent = false } = {}) {
   if (!_activated) {
     _activated = true;
 
-    const settings = loadSettings();
-    state.deepSearch = !!settings.debates_deepSearch;
-    state.matchAny   = !!settings.debates_matchAny;
-
     const ok = await fetchData();
     if (!ok) return false;
 
@@ -1251,10 +1118,6 @@ async function activate(deps, { silent = false } = {}) {
       if (n && !silent) {
         renderList();
         renderResultsLine();
-      }
-      if (state.deepSearch) {
-        loadSearchBundle();
-        loadSearchIndex();
       }
     });
   } else if (!silent) {
@@ -1278,41 +1141,11 @@ function refreshAIDependentTabs() {
 
 function renderSettingsSection(container) {
   const meta = state.data.meta;
-  const bundle = state.searchBundle;
-  const indexStats = meta?.search_index;
-  const bundleStats = meta?.search_bundle;
-
-  let estimateLine;
-  if (state.bundleLoaded && state.indexLoaded && bundle && state.searchIndex) {
-    estimateLine = `Search bundle + body index loaded: ${bundle.total} debates, ${state.searchIndex.vocab_size.toLocaleString()} tokens indexed.`;
-  } else if (state.bundleLoaded && bundle) {
-    estimateLine = `Bundle loaded (${bundle.total} debates). Body index will load next.`;
-  } else if (bundleStats?.size_bytes && indexStats?.size_bytes) {
-    const totalMB = ((bundleStats.size_bytes + indexStats.size_bytes) / (1024 * 1024)).toFixed(1);
-    estimateLine = `~${totalMB} MB total across all debates shards (CF gzip serves ~30%, cached locally after).`;
-  } else {
-    estimateLine = `Sharded download, cached locally after first load.`;
-  }
-
   container.innerHTML = `
-    <div class="settings-section">
-      <h3>Search (Debates)</h3>
-      <p>Enable deep search to fetch the debates bundle (title + first 5K chars per debate) and body index — both cached locally after first load.</p>
-      <div class="settings-row">
-        <label for="debatesDeepSearch">Deep search</label>
-        <div>
-          <label style="display:inline-flex; align-items:center; gap:6px; font-size:0.86rem; color:var(--text)">
-            <input type="checkbox" id="debatesDeepSearch" ${state.deepSearch ? 'checked' : ''} style="width:auto"> Enable full-text search across debates
-          </label>
-          <p style="font-size:0.78rem; color:var(--muted); margin-top:4px">${escapeHtml(estimateLine)}</p>
-        </div>
-      </div>
-    </div>
-
     <div class="settings-section">
       <h3>Data (Debates)</h3>
       <p id="debatesDataInfo">${meta
-        ? `${_deps.ui.stalenessIndicatorHTML('debates', meta)} · ${escapeHtml(String(meta.total_records))} records total · ${escapeHtml(String(meta.total_with_text))} with text · LSes ${escapeHtml((meta.lok_sabhas || []).join(', '))}`
+        ? `${_deps.ui.stalenessIndicatorHTML('debates', meta)} · ${escapeHtml(String(meta.total_records))} records total · LSes ${escapeHtml((meta.lok_sabhas || []).join(', '))}`
         : `Source: ${escapeHtml(_deps?.config?.dataBaseUrl || '')}debates/`}</p>
       <button class="sm" id="debatesRefreshDataBtn">Refresh from mirror</button>
     </div>
@@ -1331,30 +1164,16 @@ function renderSettingsSection(container) {
   });
 }
 
-function applySettingsFromUI() {
-  const wasDeep = state.deepSearch;
-  const cbox = document.getElementById('debatesDeepSearch');
-  if (cbox) state.deepSearch = !!cbox.checked;
-  const s = loadSettings();
-  s.debates_deepSearch = state.deepSearch;
-  saveSettings(s);
-  if (state.deepSearch && !wasDeep) {
-    loadSearchBundle();
-    loadSearchIndex();
-  }
-}
+function applySettingsFromUI() { /* no debates-specific settings */ }
 
 // ── Status (per-corpus pill) ───────────────────────────────────────────────
 
 async function fetchStatus() {
   const meta = state.data.meta;
-  const withText = Object.values(state.data.manifest?.texts || {}).reduce(
-    (n, byFid) => n + Object.keys(byFid || {}).length, 0);
-  if (!meta) return { lastUpdate: null, items: getAllReports().length, withText, error: null };
+  if (!meta) return { lastUpdate: null, items: getAllReports().length, error: null };
   return {
     lastUpdate: meta.generated_at || null,
     items: meta.total_records || getAllReports().length,
-    withText,
     error: null,
   };
 }
@@ -1375,36 +1194,17 @@ const api = {
   get(key) {
     return getAllReports().find(r => reportKey(r) === key) || null;
   },
-  async search(query, opts = {}) {
-    if (opts.deep && (!state.bundleLoaded || !state.indexLoaded)) {
-      state.deepSearch = true;
-      await Promise.all([loadSearchBundle(), loadSearchIndex()]);
-    }
+  // Title-only search. The `deep`/`any` options are accepted for API
+  // uniformity with other corpora but no-op here — debates is title-only
+  // in SansadSaar (the richer per-MP experience is moving to
+  // indiavotes.com/netas).
+  async search(query, opts = {}) { // eslint-disable-line no-unused-vars
     const parsedQ = parseQuery(query);
     if (!parsedQ.tokens.length && !parsedQ.phrases.length) return getAllReports();
-    const bundle = state.searchBundle;
-    const tokenIndexSets = parsedQ.tokens.map(t => expandTokenToDocs(state.searchIndex, t));
-    const anyMode = !!opts.any;
     return getAllReports().filter(r => {
-      const key = reportKey(r);
-      const titleLower  = (r.title || '').toLowerCase();
-      const bundleEntry = bundle ? bundle.map.get(key) : null;
-      const headLower   = bundleEntry ? bundleEntry.head.toLowerCase() : '';
-      const cached      = state.cache.text[key];
-      const cachedLower = cached ? cached.toLowerCase() : '';
-      const tokHit = (t, idxSet) => (idxSet && idxSet.has(key))
-        || titleLower.includes(t)
-        || (headLower && headLower.includes(t))
-        || (cachedLower && cachedLower.includes(t));
-      const phHit = p => titleLower.includes(p)
-        || (headLower && headLower.includes(p))
-        || (cachedLower && cachedLower.includes(p));
-      if (anyMode) {
-        return parsedQ.tokens.some((t, i) => tokHit(t, tokenIndexSets[i]))
-            || parsedQ.phrases.some(phHit);
-      }
-      return parsedQ.tokens.every((t, i) => tokHit(t, tokenIndexSets[i]))
-          && parsedQ.phrases.every(phHit);
+      const titleLower = (r.title || '').toLowerCase();
+      return parsedQ.tokens.every(t => titleLower.includes(t))
+          && parsedQ.phrases.every(p => titleLower.includes(p));
     });
   },
   open(key) {
@@ -1413,8 +1213,8 @@ const api = {
     openReportByKey(reportKey(r));
     return true;
   },
-  async searchForGlobal(query, { deep = true, limit = 10 } = {}) {
-    const items = await api.search(query, { deep });
+  async searchForGlobal(query, { deep = true, limit = 10 } = {}) { // eslint-disable-line no-unused-vars
+    const items = await api.search(query);
     const subs = (r) => {
       const parts = [];
       const h = HOUSES[r.house];
